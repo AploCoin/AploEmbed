@@ -1,13 +1,12 @@
-// Web3E Utilities
+// AploEmbed Utilities
 //
-// By James Brown Githubs: @JamesSmartCell @AlphaWallet
-// Twitters: @TallyDigital @AlphaWallet
-//
-// Based on Web3 Arduino by Okada, Takahiro.
-//
+// Specialized for AploCoin blockchain
+// Based on Web3E by James Brown (@JamesSmartCell, @AlphaWallet)
+// Original Web3 Arduino by Okada, Takahiro
 //
 
 #include <Util.h>
+#include <Crypto.h>
 #include <Arduino.h>
 #include <cstdio>
 #include <cstdlib>
@@ -16,7 +15,7 @@
 
 char *gcvt(double x, int ndigit, char *buf);
 
-static const char * _web3e_hexStr = "0123456789ABCDEF";
+static const char * _aploembed_hexStr = "0123456789ABCDEF";
 // returns output (header) length
 uint32_t Util::RlpEncodeWholeHeader(uint8_t* header_output, uint32_t total_len) {
     if (total_len < 55) {
@@ -280,7 +279,7 @@ string Util::ConvertIntegerToBytes(const int32_t value)
     std::string rc(hex_len, '0');
     for (size_t i = 0, j = (hex_len - 1) * 4; i<hex_len; ++i, j -= 4)
     {
-        rc[i] = _web3e_hexStr[(value >> j) & 0x0f];
+        rc[i] = _aploembed_hexStr[(value >> j) & 0x0f];
     }
     return rc;
 }
@@ -291,8 +290,8 @@ string Util::PlainVectorToString(const vector<uint8_t> *buf)
 	char *pout = buffer;
 	for (int i = 0; i < buf->size(); i++)
 	{
-		*pout++ = _web3e_hexStr[((*buf)[i] >> 4) & 0xF];
-		*pout++ = _web3e_hexStr[(*buf)[i] & 0xF];
+		*pout++ = _aploembed_hexStr[((*buf)[i] >> 4) & 0xF];
+		*pout++ = _aploembed_hexStr[(*buf)[i] & 0xF];
 	}
 	*pout = 0;
 	return string(buffer);
@@ -306,8 +305,8 @@ string Util::ConvertBytesToHex(const uint8_t *bytes, int length)
     *pout++ = 'x';
     for (int i = 0; i < length; i++)
     {
-        *pout++ = _web3e_hexStr[((bytes)[i] >> 4) & 0xF];
-        *pout++ = _web3e_hexStr[(bytes)[i] & 0xF];
+        *pout++ = _aploembed_hexStr[((bytes)[i] >> 4) & 0xF];
+        *pout++ = _aploembed_hexStr[(bytes)[i] & 0xF];
     }
     *pout = 0;
     return std::string(buffer);
@@ -741,4 +740,81 @@ string Util::intToHex(int value)
   std::stringstream stream;
   stream << hex << value;
   return stream.str();
+}
+
+// -------------------------------
+// Mining Helper Functions
+// -------------------------------
+
+string Util::PackMiningData(const string* address, const string* nonce, 
+                             const string* difficulty, const string* prevHash, 
+                             uint32_t totalMined) {
+    // Pack data for keccak256(abi.encodePacked(address, nonce, difficulty, prevHash, totalMined))
+    // This matches Solidity's abi.encodePacked behavior
+    
+    string packed = "";
+    
+    // Remove 0x prefix from all hex strings
+    string addr = *address;
+    if (addr.substr(0, 2) == "0x") addr = addr.substr(2);
+    
+    string nonceHex = *nonce;
+    if (nonceHex.substr(0, 2) == "0x") nonceHex = nonceHex.substr(2);
+    
+    string diffHex = *difficulty;
+    if (diffHex.substr(0, 2) == "0x") diffHex = diffHex.substr(2);
+    
+    string prevHashHex = *prevHash;
+    if (prevHashHex.substr(0, 2) == "0x") prevHashHex = prevHashHex.substr(2);
+    
+    // Pad address to 20 bytes (40 hex chars)
+    while (addr.length() < 40) addr = "0" + addr;
+    
+    // Pad nonce to 32 bytes (64 hex chars)
+    while (nonceHex.length() < 64) nonceHex = "0" + nonceHex;
+    
+    // Pad difficulty to 32 bytes (64 hex chars)
+    while (diffHex.length() < 64) diffHex = "0" + diffHex;
+    
+    // Pad prevHash to 32 bytes (64 hex chars)
+    while (prevHashHex.length() < 64) prevHashHex = "0" + prevHashHex;
+    
+    // Convert totalMined to 32-byte hex (big-endian)
+    char totalMinedHex[65];
+    snprintf(totalMinedHex, sizeof(totalMinedHex), "%064x", totalMined);
+    
+    // Concatenate all parts
+    packed = addr + nonceHex + diffHex + prevHashHex + string(totalMinedHex);
+    
+    return packed;
+}
+
+string Util::ComputeKeccak256(const string* hexData) {
+    // Convert hex string to bytes and compute keccak256
+    vector<uint8_t> bytes = ConvertHexToVector(hexData);
+    
+    uint8_t hash[32];
+    Crypto::Keccak256(bytes.data(), bytes.size(), hash);
+    
+    // Convert hash to hex string
+    return "0x" + ConvertBytesToHex(hash, 32);
+}
+
+bool Util::CompareUint256(const string* hash, const string* difficulty) {
+    // Compare two uint256 hex strings
+    // Returns true if hash < difficulty
+    
+    string h = *hash;
+    string d = *difficulty;
+    
+    // Remove 0x prefix
+    if (h.substr(0, 2) == "0x") h = h.substr(2);
+    if (d.substr(0, 2) == "0x") d = d.substr(2);
+    
+    // Pad to 64 hex chars (32 bytes)
+    while (h.length() < 64) h = "0" + h;
+    while (d.length() < 64) d = "0" + d;
+    
+    // Lexicographic comparison works for same-length hex strings
+    return h < d;
 }
