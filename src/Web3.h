@@ -63,6 +63,7 @@ public:
     // Requires: board_build.embed_files = data/cert/x509_crt_bundle.bin in platformio.ini
     // See: https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/protocols/esp_crt_bundle.html
     void setCertificateBundle(const uint8_t* bundle_start);
+    void setCertificateBundle(const uint8_t* bundle_start, size_t bundle_size);
     
     // Option 2: Use specific CA certificate (PEM format)
     // Useful when you control the RPC endpoint and want to pin to a specific CA
@@ -148,6 +149,7 @@ private:
     CertMode certMode;
     const char* caCert;
     const uint8_t* certBundle;
+    size_t certBundleSize;
 };
 
 #endif //APLOEMBED_WEB3_H

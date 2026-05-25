@@ -25,6 +25,7 @@ void Web3::initWeb3(const char* primaryRpc, const char* fallbackRpc) {
     certMode = CERT_AUTO;
     caCert = nullptr;
     certBundle = nullptr;
+    certBundleSize = 0;
     
     selectHost();
 }
@@ -59,8 +60,13 @@ Web3::Web3(long long networkId) {
 // Certificate validation configuration methods
 
 void Web3::setCertificateBundle(const uint8_t* bundle_start) {
+    setCertificateBundle(bundle_start, 0);
+}
+
+void Web3::setCertificateBundle(const uint8_t* bundle_start, size_t bundle_size) {
     certMode = CERT_BUNDLE;
     certBundle = bundle_start;
+    certBundleSize = bundle_size;
 }
 
 void Web3::setCertificate(const char* root_ca) {
@@ -76,15 +82,15 @@ string Web3::Web3ClientVersion() {
     string m = "web3_clientVersion";
     string p = "[]";
     string input = generateJson(&m, &p);
-    string output = exec(&input);
+    string output = execWithFailover(&input);
     return getString(&output);
 }
 
 string Web3::Web3Sha3(const string* data) {
     string m = "web3_sha3";
-    string p = "[\\\"" + *data + "\\\"]";
+    string p = "[\"" + *data + "\"]";
     string input = generateJson(&m, &p);
-    string output = exec(&input);
+    string output = execWithFailover(&input);
     return getString(&output);
 }
 
@@ -92,7 +98,7 @@ int Web3::NetVersion() {
     string m = "net_version";
     string p = "[]";
     string input = generateJson(&m, &p);
-    string output = exec(&input);
+    string output = execWithFailover(&input);
     return getInt(&output);
 }
 
@@ -100,7 +106,7 @@ bool Web3::NetListening() {
     string m = "net_listening";
     string p = "[]";
     string input = generateJson(&m, &p);
-    string output = exec(&input);
+    string output = execWithFailover(&input);
     return getBool(&output);
 }
 
@@ -108,7 +114,7 @@ int Web3::NetPeerCount() {
     string m = "net_peerCount";
     string p = "[]";
     string input = generateJson(&m, &p);
-    string output = exec(&input);
+    string output = execWithFailover(&input);
     return getInt(&output);
 }
 
@@ -116,7 +122,7 @@ double Web3::EthProtocolVersion() {
     string m = "eth_protocolVersion";
     string p = "[]";
     string input = generateJson(&m, &p);
-    string output = exec(&input);
+    string output = execWithFailover(&input);
     return getDouble(&output);
 }
 
@@ -124,7 +130,7 @@ bool Web3::EthSyncing() {
     string m = "eth_syncing";
     string p = "[]";
     string input = generateJson(&m, &p);
-    string result = exec(&input);
+    string result = execWithFailover(&input);
 
     return getBool(&result);
 }
@@ -133,7 +139,7 @@ bool Web3::EthMining() {
     string m = "eth_mining";
     string p = "[]";
     string input = generateJson(&m, &p);
-    string output = exec(&input);
+    string output = execWithFailover(&input);
     return getBool(&output);
 }
 
@@ -141,7 +147,7 @@ double Web3::EthHashrate() {
     string m = "eth_hashrate";
     string p = "[]";
     string input = generateJson(&m, &p);
-    string output = exec(&input);
+    string output = execWithFailover(&input);
     return getDouble(&output);
 }
 
@@ -149,7 +155,7 @@ long long int Web3::EthGasPrice() {
     string m = "eth_gasPrice";
     string p = "[]";
     string input = generateJson(&m, &p);
-    string output = exec(&input);
+    string output = execWithFailover(&input);
     return getLongLong(&output);
 }
 
@@ -165,35 +171,35 @@ int Web3::EthBlockNumber() {
     string m = "eth_blockNumber";
     string p = "[]";
     string input = generateJson(&m, &p);
-    string output = exec(&input);
+    string output = execWithFailover(&input);
     return getInt(&output);
 }
 
 uint256_t Web3::EthGetBalance(const string* address) {
     string m = "eth_getBalance";
-    string p = "[\\\"" + *address + "\\\",\\\"latest\\\"]";
+    string p = "[\"" + *address + "\",\"latest\"]";
     string input = generateJson(&m, &p);
-    string output = exec(&input);
+    string output = execWithFailover(&input);
     return getUint256(&output);
 }
 
 string Web3::EthViewCall(const string* data, const char* to)
 {
     string m = "eth_call";
-    string p = "[{\\\"data\\\":\\\"";;
+    string p = "[{\"data\":\"";;
     p += data->c_str();
-    p += "\\\",\\\"to\\\":\\\"";
+    p += "\",\"to\":\"";
     p += to;
-    p += "\\\"}, \\\"latest\\\"]";
+    p += "\"}, \"latest\"]";
     string input = generateJson(&m, &p);
-    return exec(&input);
+    return execWithFailover(&input);
 }
 
 int Web3::EthGetTransactionCount(const string* address) {
     string m = "eth_getTransactionCount";
-    string p = "[\\\"" + *address + "\\\",\\\"pending\\\"]"; //in case we need to push several transactions in a row
+    string p = "[\"" + *address + "\",\"pending\"]"; //in case we need to push several transactions in a row
     string input = generateJson(&m, &p);
-    string output = exec(&input);
+    string output = execWithFailover(&input);
     return getInt(&output);
 }
 
@@ -201,52 +207,52 @@ string Web3::EthCall(const string* from, const char* to, long gas, long gasPrice
                      const string* value, const string* data) {
     // Build eth_call with optional gas, gasPrice, and value parameters
     string m = "eth_call";
-    string p = "[{\\\"from\\\":\\\"" + *from + "\\\",\\\"to\\\":\\\""
-               + *to + "\\\",\\\"data\\\":\\\"" + *data + "\\\"";
+    string p = "[{\"from\":\"" + *from + "\",\"to\":\""
+               + *to + "\",\"data\":\"" + *data + "\"";
     
     // Add gas if specified (non-zero)
     if (gas > 0) {
         char gasHex[32];
         snprintf(gasHex, sizeof(gasHex), "0x%lx", gas);
-        p += ",\\\"gas\\\":\\\"";
+        p += ",\"gas\":\"";
         p += gasHex;
-        p += "\\\"";
+        p += "\"";
     }
     
     // Add gasPrice if specified (non-zero)
     if (gasPrice > 0) {
         char gasPriceHex[32];
         snprintf(gasPriceHex, sizeof(gasPriceHex), "0x%lx", gasPrice);
-        p += ",\\\"gasPrice\\\":\\\"";
+        p += ",\"gasPrice\":\"";
         p += gasPriceHex;
-        p += "\\\"";
+        p += "\"";
     }
     
     // Add value if specified (non-empty and non-zero)
     if (value != nullptr && !value->empty() && *value != "0" && *value != "0x0") {
-        p += ",\\\"value\\\":\\\"" + *value + "\\\"";
+        p += ",\"value\":\"" + *value + "\"";
     }
     
-    p += "}, \\\"latest\\\"]";
+    p += "}, \"latest\"]";
     string input = generateJson(&m, &p);
-    return exec(&input);
+    return execWithFailover(&input);
 }
 
 string Web3::EthSendSignedTransaction(const string* data, const uint32_t dataLen) {
     string m = "eth_sendRawTransaction";
-    string p = "[\\\"" + *data + "\\\"]";
+    string p = "[\"" + *data + "\"]";
     string input = generateJson(&m, &p);
 #if 0
     LOG(input);
 #endif
-    return exec(&input);
+    return execWithFailover(&input);
 }
 
 // -------------------------------
 // Private
 
 string Web3::generateJson(const string* method, const string* params) {
-    return "{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"method\\\":\\\"" + *method + "\\\",\\\"params\\\":" + *params + ",\\\"id\\\":0}";
+    return "{\"jsonrpc\":\"2.0\",\"method\":\"" + *method + "\",\"params\":" + *params + ",\"id\":0}";
 }
 
 string Web3::exec(const string* data) {
@@ -278,23 +284,34 @@ string Web3::exec(const string* data) {
     client->println(strPost.c_str());
     client->println(strHost.c_str());
     client->println("Content-Type: application/json");
+    client->println("Connection: close");
     client->println(strContentLen.c_str());
     client->println();
-    client->println(data->c_str());
+    // Keep Content-Length exact. println() appends CRLF beyond the declared body
+    // length and some JSON-RPC servers wait/parse oddly on embedded clients.
+    client->print(data->c_str());
 
     while (client->connected())
     {
-        String line = client->readStringUntil('\\n');
-        if (line == "\\r") {
+        String line = client->readStringUntil('\n');
+        if (line == "\r") {
             break;
         }
     }
 
-    // if there are incoming bytes available
-    // from the server, read them and print them:
-    while (client->available()) {
-        char c = client->read();
-        result += c;
+    // Read the complete response body. On ESP32 the body often arrives after
+    // headers, so checking available() only once races and returns empty/zero.
+    unsigned long deadline = millis() + 10000;
+    while (client->connected() || client->available()) {
+        while (client->available()) {
+            char c = client->read();
+            result += c;
+            deadline = millis() + 1000;
+        }
+        if (millis() > deadline) {
+            break;
+        }
+        delay(1);
     }
     client->flush();
     client->stop();
@@ -349,8 +366,8 @@ string Web3::getResult(const string* json) {
         return string("");
     }
 
-    if (res.at(0) == 'x') res = res.substr(1);
-    else if (res.at(1) == 'x') res = res.substr(2);
+    if (res.length() > 0 && res.at(0) == 'x') res = res.substr(1);
+    else if (res.length() > 1 && res.at(1) == 'x') res = res.substr(2);
     return res;
 }
 
@@ -379,7 +396,8 @@ string Web3::getString(const string *json)
     }
 
     //convert ascii into string
-    string text = Util::ConvertHexToASCII(asciiHex.substr(0, length*2).c_str(), length*2);
+    uint32_t stringHexLength = static_cast<uint32_t>(length) * 2;
+    string text = Util::ConvertHexToASCII(asciiHex.substr(0, stringHexLength).c_str(), stringHexLength);
     delete v;
 
     return text;
@@ -417,7 +435,19 @@ void Web3::setupCert()
         case CERT_BUNDLE:
             // Use ESP32 CA certificate bundle
             if (certBundle != nullptr) {
-                client->setCACertBundle(certBundle);
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+                if (certBundleSize > 0) {
+                    client->setCACertBundle(certBundle, certBundleSize);
+                } else {
+                    Serial.println("Warning: ESP32 Arduino core 3.x requires CA bundle size; using WiFiClientSecure defaults");
+                }
+#else
+                if (certBundleSize > 0) {
+                    client->setCACertBundle(certBundle, certBundleSize);
+                } else {
+                    client->setCACertBundle(certBundle);
+                }
+#endif
             } else {
                 Serial.println("Warning: CERT_BUNDLE mode but bundle is null; using WiFiClientSecure defaults");
             }
@@ -455,15 +485,21 @@ void Web3::selectHost()
         return;
     }
 
+    if (node.rfind("https://", 0) == 0) {
+        node = node.substr(8);
+        port = 443;
+    } else if (node.rfind("http://", 0) == 0) {
+        node = node.substr(7);
+        port = 80;
+    } else {
+        port = 443;  // Default HTTPS port
+    }
+
     int ppos = node.find(":");
     if (ppos > 0)
     {
         port = stoi(node.substr(ppos+1));
         node = node.substr(0, ppos);
-    }
-    else
-    {
-        port = 443;  // Default HTTPS port
     }
 
     ppos = node.find("/");
@@ -558,15 +594,16 @@ string Web3::AploStake(const string* stakingContract, const uint256_t* amount, c
     // Gas limit for staking (30k actual + buffer)
     uint32_t gasLimit = 100000;
     
-    // Send transaction with APLO value
-    // NOTE: For stake(), the amount is sent as transaction value (msg.value)
+    // The Aplo staking contract follows the web miner ABI: stake(uint256) is
+    // nonpayable, so the amount is an ABI argument, not msg.value.
+    uint256_t zeroValue = 0;
     string contractAddr = *stakingContract;
     string txHash = contract.SendTransaction(
         nonce,
         gasPrice,
         gasLimit,
         &contractAddr,
-        const_cast<uint256_t*>(amount),  // Value sent with transaction
+        &zeroValue,
         &functionData
     );
     
@@ -626,8 +663,8 @@ uint256_t Web3::AploGetStake(const string* stakingContract, const string* accoun
 
 uint256_t Web3::AploGetStakeMultiplier(const string* stakingContract, const string* account) {
     // Call getMultiplier(address) view function
-    // Build function selector: keccak256("getMultiplier(address)")[:4] = 0x8e2c0e96
-    string functionData = "0x8e2c0e96";
+    // Build function selector: keccak256("getMultiplier(address)")[:4] = 0xa9d637e1
+    string functionData = "0xa9d637e1";
     
     // Pad address to 32 bytes
     string addr = *account;
@@ -652,8 +689,8 @@ bool Web3::AploGetMinerParams(const string* miningContract, const string* minerA
                               uint256_t* totalMined, uint256_t* prevHash) {
     // Call miner_params(address) view function
     // Returns: (uint256 last_block, uint256 current_difficulty, uint256 total_mined, uint256 prev_hash)
-    // Function selector: keccak256("miner_params(address)")[:4] = 0x4c0f38c2
-    string functionData = "0x4c0f38c2";
+    // Function selector: keccak256("miner_params(address)")[:4] = 0xe31305ae
+    string functionData = "0xe31305ae";
     
     // Pad address to 32 bytes
     string addr = *minerAddress;
