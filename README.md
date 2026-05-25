@@ -124,29 +124,17 @@ Serial.println(multiplier.str().c_str());
 ### Stake APLO
 
 ```cpp
-#include <Contract.h>
 #include <AploContracts.h>
 
 string stakingContract = getAploStakingContract();
-Contract contract(web3, stakingContract.c_str());
-contract.SetPrivateKey(PRIVATE_KEY);
+string myAddress = "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb";
 
 // Stake 1000 APLO (minimum for rewards)
 uint256_t stakeAmount = Util::ConvertToWei(1000, 18);
 
-// Build stake(uint256) function call
-string functionData = contract.SetupContractData("stake(uint256)", &stakeAmount);
-
-// Get nonce and gas parameters
-uint32_t nonce = (uint32_t)web3->EthGetTransactionCount(&myAddress);
-unsigned long long gasPrice = 1000000000ULL;
-uint32_t gasLimit = 100000;
-string valueStr = "0x00";
-
-// Send transaction
-string result = contract.SendTransaction(nonce, gasPrice, gasLimit, 
-                                        &stakingContract, &valueStr, &functionData);
-string txHash = web3->getString(&result);
+// AploStake signs stake(uint256) and sends zero msg.value because the staking
+// contract is nonpayable; the amount is passed as the ABI argument.
+string txHash = web3->AploStake(&stakingContract, &stakeAmount, PRIVATE_KEY, &myAddress);
 Serial.print("Stake TX: ");
 Serial.println(txHash.c_str());
 ```
@@ -274,9 +262,13 @@ If your target platform does not provide a usable trust store, configure a CA bu
 
 ```cpp
 // Option 1: CA Certificate Bundle (recommended for ESP32 PlatformIO projects)
+// platformio.ini must contain:
+// board_build.embed_files = data/cert/x509_crt_bundle.bin
 extern const uint8_t rootca_crt_bundle_start[] asm("_binary_data_cert_x509_crt_bundle_bin_start");
+extern const uint8_t rootca_crt_bundle_end[] asm("_binary_data_cert_x509_crt_bundle_bin_end");
 Web3 *web3 = new Web3();
-web3->setCertificateBundle(rootca_crt_bundle_start);
+web3->setCertificateBundle(rootca_crt_bundle_start,
+                           rootca_crt_bundle_end - rootca_crt_bundle_start);
 
 // Option 2: Specific CA Certificate
 const char* root_ca = "-----BEGIN CERTIFICATE-----\n...";
@@ -288,6 +280,7 @@ TLS guidance:
 - AploEmbed does not hardcode AploCoin RPC certificates.
 - Default behavior leaves TLS to `WiFiClientSecure` and the platform trust configuration.
 - If your platform lacks a trust store, configure a CA bundle or a specific CA certificate before RPC calls.
+- If you see `undefined reference to _binary_data_cert_x509_crt_bundle_bin_start`, the certificate bundle file was not embedded by your build system. Add `board_build.embed_files` in PlatformIO, or use `setCertificate(...)` with a PEM root CA in Arduino IDE.
 - Do not disable TLS validation for wallets that hold real funds.
 
 ### Quick Security Checklist
