@@ -2,7 +2,7 @@
 #define KEY_ID_H
 #include "EEPROM.h"
 #include "Web3.h"
-#include "Trezor/rand.h"
+#include "trezor/rand.h"
 #include <string>
 #include <Crypto.h>
 

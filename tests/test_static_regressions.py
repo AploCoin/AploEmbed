@@ -26,8 +26,17 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('0xa9d637e1', web3)  # getMultiplier(address)
         self.assertIn('0xe31305ae', web3)  # miner_params(address)
 
-    def test_trezor_rand_include_matches_repository_case(self):
-        self.assertIn('#include "Trezor/rand.h"', read('src/KeyID.h'))
+    def test_trezor_includes_match_lowercase_repository_case(self):
+        self.assertTrue((ROOT / 'src' / 'trezor' / 'rand.h').exists())
+        self.assertFalse((ROOT / 'src' / 'Trezor').exists())
+        self.assertIn('#include "trezor/rand.h"', read('src/KeyID.h'))
+        self.assertIn('#include "trezor/secp256k1.h"', read('src/Crypto.cpp'))
+        self.assertIn('#include "trezor/ecdsa.h"', read('src/Crypto.cpp'))
+
+    def test_trezor_rfc6979_is_compiled_once(self):
+        self.assertTrue((ROOT / 'src' / 'trezor' / 'rfc6979.c').exists())
+        self.assertNotIn('#include "rfc6979.c"', read('src/trezor/ecdsa.c'))
+        self.assertIn('#include "rfc6979.h"', read('src/trezor/ecdsa.c'))
 
     def test_cert_bundle_size_overload_exists_for_esp32_core_3(self):
         header = read('src/Web3.h')

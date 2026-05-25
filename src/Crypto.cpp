@@ -6,8 +6,8 @@
 #include "Crypto.h"
 #include "Web3.h"
 #include "Util.h"
-#include "Trezor/secp256k1.h"
-#include "Trezor/ecdsa.h"
+#include "trezor/secp256k1.h"
+#include "trezor/ecdsa.h"
 #include <vector>
 #include <string.h>
 
