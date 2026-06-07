@@ -182,7 +182,7 @@ void queryStakingStatus(const char *address)
     
     // Get mining reward multiplier (scaled by 10: 10 = 1.0×, 17 = 1.7×)
     uint256_t multiplierScaled = web3->AploGetStakeMultiplier(&stakingContract, &addr);
-    int multiplierInt = (int)multiplierScaled;
+    int multiplierInt = static_cast<uint32_t>(multiplierScaled);
     
     Serial.print("Mining Multiplier: ");
     if (multiplierInt == 0) {
