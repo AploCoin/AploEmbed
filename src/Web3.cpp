@@ -442,11 +442,8 @@ void Web3::setupCert()
                     Serial.println("Warning: ESP32 Arduino core 3.x requires CA bundle size; using WiFiClientSecure defaults");
                 }
 #else
-                if (certBundleSize > 0) {
-                    client->setCACertBundle(certBundle, certBundleSize);
-                } else {
-                    client->setCACertBundle(certBundle);
-                }
+                (void)certBundleSize;
+                client->setCACertBundle(certBundle);
 #endif
             } else {
                 Serial.println("Warning: CERT_BUNDLE mode but bundle is null; using WiFiClientSecure defaults");

@@ -1,2 +1,7 @@
 # Visual Studio Code project files
 .vscode/
+
+# Local Python/PlatformIO tooling
+__pycache__/
+*.py[cod]
+.venv-pio/
