@@ -11,10 +11,9 @@
 #include "Arduino.h"
 #include "Web3.h"
 #include <vector>
+#include <string>
 #include <Crypto.h>
 #include "uint256/uint256_t.h"
-
-using namespace std;
 
 class Contract {
 
@@ -31,13 +30,13 @@ public:
     Contract(Web3* _web3, const char* address);
     explicit Contract(long long int networkId);
     void SetPrivateKey(const char *key);
-    string SetupContractData(const char* func, ...);
-    string Call(const string* param);
-    string ViewCall(const string *param);
-    string SendTransaction(uint32_t nonceVal, unsigned long long gasPriceVal, uint32_t gasLimitVal,
-                           string *toStr, uint256_t *valueStr, string *dataStr);
-    string SignTransaction(uint32_t nonceVal, unsigned long long int gasPriceVal, uint32_t gasLimitVal, string *toStr,
-                           uint256_t *valueStr, string *dataStr);
+    std::string SetupContractData(const char* func, ...);
+    std::string Call(const std::string* param);
+    std::string ViewCall(const std::string *param);
+    std::string SendTransaction(uint32_t nonceVal, unsigned long long gasPriceVal, uint32_t gasLimitVal,
+                           std::string *toStr, uint256_t *valueStr, std::string *dataStr);
+    std::string SignTransaction(uint32_t nonceVal, unsigned long long int gasPriceVal, uint32_t gasLimitVal, std::string *toStr,
+                           uint256_t *valueStr, std::string *dataStr);
 
     static void ReplaceFunction(std::string &param, const char* func);                       
     
@@ -47,24 +46,24 @@ private:
     Crypto* crypto;
 
 private:
-    static string GenerateContractBytes(const char *func);
-    string GenerateBytesForInt(const int32_t value);
-    string GenerateBytesForUint(const uint256_t *value);
-    string GenerateBytesForAddress(const string *value);
-    string GenerateBytesForString(const string *value);
-    string GenerateBytesForBytes(const char* value, const int len);
-    string GenerateBytesForUIntArray(const vector<uint32_t> *v);
-    string GenerateBytesForHexBytes(const string *value);
-    string GenerateBytesForStruct(const string *value);
+    static std::string GenerateContractBytes(const char *func);
+    std::string GenerateBytesForInt(const int32_t value);
+    std::string GenerateBytesForUint(const uint256_t *value);
+    std::string GenerateBytesForAddress(const std::string *value);
+    std::string GenerateBytesForString(const std::string *value);
+    std::string GenerateBytesForBytes(const char* value, const int len);
+    std::string GenerateBytesForUIntArray(const std::vector<uint32_t> *v);
+    std::string GenerateBytesForHexBytes(const std::string *value);
+    std::string GenerateBytesForStruct(const std::string *value);
 
     void GenerateSignature(uint8_t* signature, int* recid, uint32_t nonceVal, unsigned long long gasPriceVal, uint32_t  gasLimitVal,
-                           string* toStr, uint256_t* valueStr, string* dataStr);
-    vector<uint8_t> RlpEncode(
+                           std::string* toStr, uint256_t* valueStr, std::string* dataStr);
+    std::vector<uint8_t> RlpEncode(
             uint32_t nonceVal, unsigned long long gasPriceVal, uint32_t  gasLimitVal,
-            string* toStr, uint256_t* valueStr, string* dataStr);
-    vector<uint8_t> RlpEncodeForRawTransaction(
+            std::string* toStr, uint256_t* valueStr, std::string* dataStr);
+    std::vector<uint8_t> RlpEncodeForRawTransaction(
             uint32_t nonceVal, unsigned long long gasPriceVal, uint32_t  gasLimitVal,
-            string* toStr, uint256_t* valueStr, string* dataStr, uint8_t* sig, uint8_t recid);
+            std::string* toStr, uint256_t* valueStr, std::string* dataStr, uint8_t* sig, uint8_t recid);
     void Sign(uint8_t* hash, uint8_t* sig, int* recid);
 };
 

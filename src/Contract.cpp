@@ -7,10 +7,12 @@
 
 #include "Contract.h"
 #include "Web3.h"
-#include <WiFi.h>
+#include "AploPlatform.h"
 #include "Util.h"
 #include <vector>
 
+using std::string;
+using std::vector;
 #define SIGNATURE_LENGTH 64
 
 /**

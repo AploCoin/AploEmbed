@@ -1,6 +1,6 @@
 #ifndef SCRIPT_CLIENT_H
 #define SCRIPT_CLIENT_H
-#include <WiFiClient.h>
+#include "AploPlatform.h"
 #include <string>
 #include "APIReturn.h"
 

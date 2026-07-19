@@ -13,7 +13,8 @@
 
 #define SIGNATURE_LENGTH 64
 
-using namespace std;
+using std::string;
+using std::vector;
 
 const char * PERSONAL_MESSAGE_PREFIX = "\u0019Ethereum Signed Message:\n";
 

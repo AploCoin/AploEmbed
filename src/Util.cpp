@@ -10,11 +10,12 @@
 #include <Arduino.h>
 #include <cstdio>
 #include <cstdlib>
+#include <cmath>
 #include <vector>
 #include "TagReader/TagReader.h"
 
-char *gcvt(double x, int ndigit, char *buf);
-
+using std::string;
+using std::vector;
 static const char * _aploembed_hexStr = "0123456789ABCDEF";
 // returns output (header) length
 uint32_t Util::RlpEncodeWholeHeader(uint8_t* header_output, uint32_t total_len) {
@@ -721,7 +722,7 @@ string Util::ConvertEthToWei(double eth)
 {
     char buffer[36]; //allow extra 4 chars for gcvt
     if (eth < 0) eth = 0;
-    gcvt(eth * pow(10.0, 18), 32, buffer);
+    snprintf(buffer, sizeof(buffer), "%.0f", eth * pow(10.0, 18));
     std::string weiStr = std::string(buffer);
     std::size_t index = weiStr.find_last_of('.');
     if (index != std::string::npos) weiStr = weiStr.substr(0, index);
@@ -738,7 +739,7 @@ string Util::toString(int value)
 string Util::intToHex(int value)
 {
   std::stringstream stream;
-  stream << hex << value;
+  stream << std::hex << value;
   return stream.str();
 }
 

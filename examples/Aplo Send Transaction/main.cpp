@@ -1,9 +1,10 @@
 #include <Arduino.h>
-#include <WiFi.h>
+#include <AploPlatform.h>
 #include <Web3.h>
 #include <Contract.h>
 #include <Util.h>
 
+using std::string;
 // ============================================================================
 // IMPORTANT SAFETY NOTES - READ BEFORE USE
 // ============================================================================
@@ -268,7 +269,9 @@ void setup_wifi()
     if (wificounter >= 10)
     {
         Serial.println("\nWiFi connection failed. Restarting...");
+        #if defined(ESP8266) || defined(ESP32)
         ESP.restart();
+#endif
     }
 
     delay(10);

@@ -2,7 +2,7 @@
 #define TCP_BRIDGE_H
 #include <APIReturn.h>
 #include <Web3.h>
-#include <WiFi.h>
+#include "AploPlatform.h"
 #include <string>
 
 class TcpBridge;

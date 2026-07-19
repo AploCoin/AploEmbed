@@ -14,6 +14,9 @@
 #include "nodes.h"
 
 // Helper function to initialize Web3 instance
+using std::string;
+using std::stringstream;
+using std::vector;
 void Web3::initWeb3(const char* primaryRpc, const char* fallbackRpc) {
     mem = new BYTE[sizeof(WiFiClientSecure)];
     chainId = APLO_ID;  // Fixed to AploCoin chain ID (28282)
@@ -266,8 +269,10 @@ string Web3::exec(const string* data) {
         Serial.print("Unable to connect to Host: ");
         Serial.println(host);
         delay(100);
-        //trigger a reset of the device
+#if defined(ESP8266) || defined(ESP32)
+        // trigger a reset of supported Espressif Arduino devices
         ESP.restart();
+#endif
         return "";
     }
 
@@ -404,7 +409,6 @@ string Web3::getString(const string *json)
 }
 
 /**
-/**
  * Configure TLS certificate validation for HTTPS connections.
  * 
  * Four modes are supported:
@@ -433,17 +437,29 @@ void Web3::setupCert()
 {
     switch (certMode) {
         case CERT_BUNDLE:
-            // Use ESP32 CA certificate bundle
+            // ESP32 supports certificate bundles. ESP8266 BearSSL does not,
+            // so keep its default TLS behavior and warn instead of calling an
+            // ESP32-only API.
             if (certBundle != nullptr) {
-#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+#if defined(ESP8266)
+                Serial.println("Warning: ESP8266 does not support setCACertBundle(); using WiFiClientSecure defaults");
+                (void)certBundle;
+                (void)certBundleSize;
+#elif defined(ESP32)
+  #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
                 if (certBundleSize > 0) {
                     client->setCACertBundle(certBundle, certBundleSize);
                 } else {
                     Serial.println("Warning: ESP32 Arduino core 3.x requires CA bundle size; using WiFiClientSecure defaults");
                 }
-#else
+  #else
                 (void)certBundleSize;
                 client->setCACertBundle(certBundle);
+  #endif
+#else
+                (void)certBundle;
+                (void)certBundleSize;
+                Serial.println("Warning: CA bundle mode is not supported on this platform; using WiFiClientSecure defaults");
 #endif
             } else {
                 Serial.println("Warning: CERT_BUNDLE mode but bundle is null; using WiFiClientSecure defaults");
@@ -451,9 +467,18 @@ void Web3::setupCert()
             break;
             
         case CERT_CA:
-            // Use specific CA certificate
+            // Use specific CA certificate. ESP32 accepts PEM directly;
+            // ESP8266 BearSSL needs an X509List trust anchor that must stay
+            // alive for the TLS connection duration.
             if (caCert != nullptr) {
+#if defined(ESP8266)
+                BearSSL::X509List trustAnchor(caCert);
+                client->setTrustAnchors(&trustAnchor);
+#elif defined(ESP32)
                 client->setCACert(caCert);
+#else
+                client->setCACert(caCert);
+#endif
             } else {
                 Serial.println("Warning: CERT_CA mode but certificate is null; using WiFiClientSecure defaults");
             }

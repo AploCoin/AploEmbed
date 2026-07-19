@@ -1,6 +1,6 @@
 #ifndef KEY_ID_H
 #define KEY_ID_H
-#include "EEPROM.h"
+#include <EEPROM.h>
 #include "Web3.h"
 #include "trezor/rand.h"
 #include <string>
