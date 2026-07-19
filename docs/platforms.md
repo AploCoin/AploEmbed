@@ -1,6 +1,12 @@
-# Platform notes
+# Platform support
 
-AploEmbed targets Arduino-compatible boards. ESP32 is the primary target; ESP32-C3 and ESP8266 are supported with a few build-system differences.
+AploEmbed targets Arduino-compatible WiFi boards. The example `platformio.ini` files intentionally keep only the default ESP32 environment so examples stay copy-paste friendly.
+
+Use the platform-specific files below when building for another target:
+
+- [ESP32](platformio-esp32.md) — default target used by examples.
+- [ESP32-C3](platformio-esp32-c3.md) — UART-safe serial settings, USB CDC notes, ESP32-C3 WiFi/mining notes.
+- [ESP8266](platformio-esp8266.md) — BearSSL and low-memory guidance.
 
 ## PlatformIO dependency
 
@@ -11,6 +17,13 @@ lib_deps =
   https://github.com/AploCoin/AploEmbed.git#master
 ```
 
+For local source validation before pushing to GitHub, use an absolute local dependency path:
+
+```ini
+lib_deps =
+  file:///absolute/path/to/AploEmbed
+```
+
 If PlatformIO keeps compiling an older commit, remove the cached dependency:
 
 ```bash
@@ -18,98 +31,28 @@ rm -rf .pio/libdeps/<env>/AploEmbed
 platformio run -e <env>
 ```
 
-## ESP32
+## Choosing a target
 
-Typical configuration:
-
-```ini
-[env:esp32dev]
-platform = espressif32
-board = esp32dev
-framework = arduino
-monitor_speed = 115200
-
-lib_deps =
-  https://github.com/AploCoin/AploEmbed.git#master
-
-build_flags =
-  -DCORE_DEBUG_LEVEL=3
-```
-
-If your sketch grows beyond the default partition size, use a larger app partition:
-
-```ini
-board_build.partitions = no_ota.csv
-```
-
-## ESP32-C3
-
-Start with the UART-safe configuration below. This matches boards where the ROM boot log appears in the same serial monitor as the application log.
-
-```ini
-[env:esp32-c3-devkitm-1]
-platform = espressif32
-board = esp32-c3-devkitm-1
-framework = arduino
-monitor_speed = 115200
-monitor_rts = 0
-monitor_dtr = 0
-
-lib_deps =
-  https://github.com/AploCoin/AploEmbed.git#master
-
-build_flags =
-  -DCORE_DEBUG_LEVEL=3
-```
-
-Only enable native USB CDC if your board is actually wired for it and you monitor the USB CDC port, not the UART bridge:
-
-```ini
-build_flags =
-  -DCORE_DEBUG_LEVEL=3
-  -DARDUINO_USB_MODE=1
-  -DARDUINO_USB_CDC_ON_BOOT=1
-```
-
-ESP32-C3 supports 2.4 GHz WiFi only. It will not connect to a 5 GHz-only SSID.
-
-## ESP8266
-
-Typical configuration:
-
-```ini
-[env:esp12e]
-platform = espressif8266
-board = esp12e
-framework = arduino
-monitor_speed = 115200
-
-lib_deps =
-  https://github.com/AploCoin/AploEmbed.git#master
-
-build_flags =
-  -DCORE_DEBUG_LEVEL=3
-  -std=gnu++11
-```
-
-ESP8266 has much less RAM than ESP32. TLS, JSON-RPC responses, and transaction signing can push memory usage quickly. Keep sketches small and avoid unnecessary dynamic allocation in application code.
+| Target | Use when | Notes |
+| --- | --- | --- |
+| ESP32 | Default examples and easiest testing | Most RAM/headroom; supports PEM certs and CA bundles. |
+| ESP32-C3 | RISC-V ESP32-C3 boards | 2.4 GHz WiFi only; use UART-safe serial defaults unless using native USB CDC intentionally. |
+| ESP8266 | Smaller legacy boards | 2.4 GHz WiFi only; BearSSL; much tighter RAM. |
 
 ## WiFi diagnostics
 
-The examples wait for serial output on USB CDC boards and keep WiFi diagnostics visible instead of immediately rebooting on connection failure.
-
 Common causes of WiFi failure:
 
-- wrong SSID or password
-- 5 GHz network used with ESP32-C3 or ESP8266
-- router MAC filtering
-- weak signal during boot
-- captive portal or enterprise WiFi
+- wrong SSID or password;
+- 5 GHz network used with ESP32-C3 or ESP8266;
+- router MAC filtering;
+- weak signal during boot;
+- captive portal or enterprise WiFi.
 
 ## TLS notes
 
-AploEmbed does not hardcode AploCoin RPC certificates and does not disable certificate validation automatically.
+AploEmbed does not disable certificate validation automatically. The default `Web3()` constructor uses automatic bundled root CA resolution for public AploCoin HTTPS RPC endpoints.
 
-ESP32 supports PEM certificates and CA bundles through `WiFiClientSecure`. ESP8266 uses BearSSL and does not support ESP32 CA bundles. For production wallets, configure a real trust anchor and avoid insecure mode.
+ESP32 supports PEM certificates and CA bundles. ESP8266 uses BearSSL and does not support ESP32 CA bundles. For production wallets, configure a real trust anchor and avoid insecure mode.
 
 See [security.md](security.md) for TLS details.
