@@ -378,6 +378,11 @@ string Contract::GenerateBytesForFixedBytes(const string *value, size_t byteSize
     if (cleaned.length() > maxHexDigits) {
         cleaned = cleaned.substr(0, maxHexDigits);
     }
+    for (size_t i = 0; i < cleaned.length(); ++i) {
+        if (!isxdigit(static_cast<unsigned char>(cleaned[i]))) {
+            return string(64, '0');
+        }
+    }
     while (cleaned.length() < maxHexDigits) {
         cleaned += "0";
     }

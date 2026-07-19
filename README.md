@@ -4,7 +4,7 @@ AploEmbed is an Arduino library for using AploCoin from embedded devices.
 
 It provides RPC helpers, transaction signing, APLO/Gaplo conversion, staking helpers, and mining contract helpers for AploCoin chain ID `28282`.
 
-Mining rewards are accounted in Gaplo, the base unit of APLO. Staking locks APLO in the staking contract and changes the multiplier used by the mining contract.
+Mining rewards are accounted in Gaplo. Staking locks APLO in the staking contract and sets the reward multiplier used by mining rewards.
 
 ## Supported boards
 
@@ -12,7 +12,7 @@ Mining rewards are accounted in Gaplo, the base unit of APLO. Staking locks APLO
 - ESP32-C3
 - ESP8266
 
-ESP32 is the main target. ESP32-C3 and ESP8266 need a few PlatformIO settings; see [docs/platforms.md](docs/platforms.md).
+ESP32 is the default example target. Platform-specific PlatformIO environments live in [`docs/platforms.md`](docs/platforms.md) and the per-platform files under `docs/`.
 
 ## Install
 
@@ -28,6 +28,11 @@ monitor_speed = 115200
 lib_deps =
   https://github.com/AploCoin/AploEmbed.git#master
 ```
+
+For ESP32-C3 and ESP8266, copy the target-specific environment from:
+
+- [`docs/platformio-esp32-c3.md`](docs/platformio-esp32-c3.md)
+- [`docs/platformio-esp8266.md`](docs/platformio-esp8266.md)
 
 ### Arduino IDE
 
@@ -53,9 +58,9 @@ void setup() {
   // Connect WiFi in your sketch before making RPC calls.
 
   std::string address = "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb";
-  std::string balance = web3.AploGetBalanceInAplo(&address);
+  std::string balance = web3.AploGetAploBalanceString(&address);
 
-  Serial.print("Balance: ");
+  Serial.print("APLO Balance: ");
   Serial.print(balance.c_str());
   Serial.println(" APLO");
 }
@@ -89,6 +94,21 @@ Do not hammer public RPC endpoints from development loops. Use your own RPC endp
 ## API overview
 
 ### Balance
+
+AploCoin has two balances that users usually care about:
+
+- APLO balance — value/staking balance;
+- Gas balance — Gaplo gas token balance used for fees.
+
+```cpp
+uint256_t AploGetAploBalance(const std::string* address);
+std::string AploGetAploBalanceString(const std::string* address);
+
+uint256_t AploGetGasBalance(const std::string* address);
+std::string AploGetGasBalanceString(const std::string* address);
+```
+
+Backward-compatible aliases return APLO balance:
 
 ```cpp
 uint256_t AploGetBalance(const std::string* address);
@@ -129,7 +149,7 @@ std::string AploUnstake(const std::string* stakingContract, const char* privateK
 
 ### Mining
 
-Mining submits a `mine(bytes32)` contract transaction. A successful call earns a Gaplo reward. The reward multiplier comes from the amount of APLO staked by the miner.
+Mining submits a `mine(bytes32)` contract transaction. A successful call earns a Gaplo reward. The staked APLO amount gates/scales the reward multiplier; the base reward comes from gas spent by the transaction.
 
 ```cpp
 bool AploGetMinerParams(
@@ -144,12 +164,14 @@ bool AploGetMinerParams(
 std::string AploMine(const std::string* miningContract, const std::string* nonce, const char* privateKey, const std::string* fromAddress);
 ```
 
+`AploMine()` uses the generic `Contract::SetupContractData("mine(bytes32)", ...)` ABI encoder. Fixed bytes types (`bytes1` through `bytes32`) are encoded as static ABI words.
+
 ## Units
 
-AploCoin uses APLO as the native currency and Gaplo as the base unit.
+AploCoin uses APLO for value/staking and Gaplo as the gas token unit.
 
 ```text
-1 APLO = 10^18 Gaplo
+1 APLO = 10^18 Gaplo units for conversion helpers
 ```
 
 Helpers:
@@ -161,7 +183,11 @@ std::string aplo = Util::ConvertWeiToEthString(&gaplo, 18);
 
 ## Documentation
 
-- [Platform notes](docs/platforms.md)
+- [Platform support](docs/platforms.md)
+- [ESP32 PlatformIO](docs/platformio-esp32.md)
+- [ESP32-C3 PlatformIO](docs/platformio-esp32-c3.md)
+- [ESP8266 PlatformIO](docs/platformio-esp8266.md)
+- [ABI and contract helpers](docs/abi-and-contracts.md)
 - [Security notes](docs/security.md)
 - [Examples](examples/)
 

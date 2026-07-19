@@ -649,23 +649,13 @@ string Web3::execWithFailover(const string* data) {
 // AploCoin Balance Helpers
 // -------------------------------
 
-static string encodeBalanceOf(const string* address) {
-    string addr = *address;
-    if (addr.substr(0, 2) == "0x" || addr.substr(0, 2) == "0X") {
-        addr = addr.substr(2);
-    }
-    while (addr.length() < 64) {
-        addr = "0" + addr;
-    }
-    return string("0x70a08231") + addr;
-}
-
 uint256_t Web3::AploGetAploBalance(const string* address) {
     // APLO lives behind the built-in APLO contract at 0x...1235.
     // balanceOf(address) reads StateDB.GetBalance directly in AploNode.
-    string functionData = encodeBalanceOf(address);
-    string aploContract = APLO_STAKING_CONTRACT;
-    string result = EthViewCall(&functionData, aploContract.c_str());
+    string aploContractAddr = APLO_STAKING_CONTRACT;
+    Contract contract(this, aploContractAddr.c_str());
+    string functionData = contract.SetupContractData("balanceOf(address)", address);
+    string result = contract.ViewCall(&functionData);
     return getUint256(&result);
 }
 
@@ -763,40 +753,16 @@ string Web3::AploUnstake(const string* stakingContract, const char* privateKey, 
 }
 
 uint256_t Web3::AploGetStake(const string* stakingContract, const string* account) {
-    // Call getStake(address) view function
-    // Build function selector: keccak256("getStake(address)")[:4] = 0x7a766460
-    string functionData = "0x7a766460";
-    
-    // Pad address to 32 bytes (remove 0x prefix, pad left with zeros)
-    string addr = *account;
-    if (addr.substr(0, 2) == "0x") {
-        addr = addr.substr(2);
-    }
-    while (addr.length() < 64) {
-        addr = "0" + addr;
-    }
-    functionData += addr;
-    
-    string result = EthViewCall(&functionData, stakingContract->c_str());
+    Contract contract(this, stakingContract->c_str());
+    string functionData = contract.SetupContractData("getStake(address)", account);
+    string result = contract.ViewCall(&functionData);
     return getUint256(&result);
 }
 
 uint256_t Web3::AploGetStakeMultiplier(const string* stakingContract, const string* account) {
-    // Call getMultiplier(address) view function
-    // Build function selector: keccak256("getMultiplier(address)")[:4] = 0xa9d637e1
-    string functionData = "0xa9d637e1";
-    
-    // Pad address to 32 bytes
-    string addr = *account;
-    if (addr.substr(0, 2) == "0x") {
-        addr = addr.substr(2);
-    }
-    while (addr.length() < 64) {
-        addr = "0" + addr;
-    }
-    functionData += addr;
-    
-    string result = EthViewCall(&functionData, stakingContract->c_str());
+    Contract contract(this, stakingContract->c_str());
+    string functionData = contract.SetupContractData("getMultiplier(address)", account);
+    string result = contract.ViewCall(&functionData);
     return getUint256(&result);
 }
 
@@ -807,22 +773,11 @@ uint256_t Web3::AploGetStakeMultiplier(const string* stakingContract, const stri
 bool Web3::AploGetMinerParams(const string* miningContract, const string* minerAddress,
                               uint256_t* lastBlock, uint256_t* currentDifficulty,
                               uint256_t* totalMined, uint256_t* prevHash) {
-    // Call miner_params(address) view function
+    // Call miner_params(address) view function.
     // Returns: (uint256 last_block, uint256 current_difficulty, uint256 total_mined, uint256 prev_hash)
-    // Function selector: keccak256("miner_params(address)")[:4] = 0xe31305ae
-    string functionData = "0xe31305ae";
-    
-    // Pad address to 32 bytes
-    string addr = *minerAddress;
-    if (addr.substr(0, 2) == "0x") {
-        addr = addr.substr(2);
-    }
-    while (addr.length() < 64) {
-        addr = "0" + addr;
-    }
-    functionData += addr;
-    
-    string result = EthViewCall(&functionData, miningContract->c_str());
+    Contract contract(this, miningContract->c_str());
+    string functionData = contract.SetupContractData("miner_params(address)", minerAddress);
+    string result = contract.ViewCall(&functionData);
     
     if (result.length() == 0) {
         return false;

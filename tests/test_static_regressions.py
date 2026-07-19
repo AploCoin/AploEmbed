@@ -20,12 +20,18 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('return "{\\\"jsonrpc\\\":\\\"2.0', web3)
         self.assertIn('[\\\"" + *address + "\\\",\\\"latest\\\"]', web3)
 
-    def test_aplo_builtin_selectors_match_web3_reference(self):
+    def test_aplo_builtin_helpers_use_generic_abi_encoding(self):
         web3 = read('src/Web3.cpp')
-        self.assertIn('0x7a766460', web3)  # getStake(address)
-        self.assertIn('0xa9d637e1', web3)  # getMultiplier(address)
-        self.assertIn('0xe31305ae', web3)  # miner_params(address)
-        self.assertIn('0x70a08231', web3)  # balanceOf(address)
+        for selector in ['0x7a766460', '0xa9d637e1', '0xe31305ae', '0x70a08231', '0x2fdc505e']:
+            self.assertNotIn(selector, web3)
+        for signature in [
+            'balanceOf(address)',
+            'getStake(address)',
+            'getMultiplier(address)',
+            'miner_params(address)',
+            'mine(bytes32)',
+        ]:
+            self.assertIn(f'SetupContractData("{signature}"', web3)
 
     def test_trezor_includes_match_lowercase_repository_case(self):
         self.assertTrue((ROOT / 'src' / 'trezor' / 'rand.h').exists())
@@ -93,6 +99,28 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('APLO Balance:', mining)
         self.assertIn('Gas Balance (GAPLO):', mining)
         self.assertIn('HASH_ATTEMPTS_PER_CYCLE 2000', mining)
+
+    def test_examples_keep_only_default_esp32_platformio_env(self):
+        for rel in [
+            'examples/Aplo Mining/platformio.ini',
+            'examples/Aplo Balance Query/platformio.ini',
+            'examples/Aplo Send Transaction/platformio.ini',
+            'examples/Aplo Staking/platformio.ini',
+        ]:
+            ini = read(rel)
+            self.assertIn('[env:esp32dev]', ini)
+            self.assertNotIn('[env:esp32-c3-devkitm-1]', ini)
+            self.assertNotIn('[env:esp12e]', ini)
+
+    def test_platform_specific_docs_exist(self):
+        for rel in [
+            'docs/platformio-esp32.md',
+            'docs/platformio-esp32-c3.md',
+            'docs/platformio-esp8266.md',
+        ]:
+            self.assertTrue((ROOT / rel).exists())
+        self.assertIn('[env:esp32-c3-devkitm-1]', read('docs/platformio-esp32-c3.md'))
+        self.assertIn('[env:esp12e]', read('docs/platformio-esp8266.md'))
 
     def test_examples_derive_sender_address_from_private_key(self):
         crypto_header = read('src/Crypto.h')
