@@ -8,9 +8,11 @@
 #include "Web3.h"
 
 #include "Util.h"
+#include "TagReader/TagReader.h"
 #include <iostream>
 #include <sstream>
 #include <cctype>
+#include <cstdlib>
 #include "nodes.h"
 
 // Helper function to initialize Web3 instance
@@ -21,47 +23,8 @@ using std::vector;
 
 static string getJsonResultValue(const string* json) {
     if (json == nullptr) return string("");
-
-    size_t key = json->find("\"result\"");
-    if (key == string::npos) return string("");
-
-    size_t colon = json->find(':', key + 8);
-    if (colon == string::npos) return string("");
-
-    size_t start = colon + 1;
-    while (start < json->length() && isspace(static_cast<unsigned char>((*json)[start]))) {
-        start++;
-    }
-    if (start >= json->length()) return string("");
-
-    if ((*json)[start] == '"') {
-        start++;
-        string out;
-        bool escaped = false;
-        for (size_t i = start; i < json->length(); ++i) {
-            char c = (*json)[i];
-            if (escaped) {
-                out += c;
-                escaped = false;
-            } else if (c == '\\') {
-                escaped = true;
-            } else if (c == '"') {
-                break;
-            } else {
-                out += c;
-            }
-        }
-        return out;
-    }
-
-    size_t end = start;
-    while (end < json->length() && (*json)[end] != ',' && (*json)[end] != '}') {
-        end++;
-    }
-    while (end > start && isspace(static_cast<unsigned char>((*json)[end - 1]))) {
-        end--;
-    }
-    return json->substr(start, end - start);
+    TagReader reader;
+    return reader.getTag(json, "result");
 }
 void Web3::initWeb3(const char* primaryRpc, const char* fallbackRpc) {
     mem = new BYTE[sizeof(WiFiClientSecure)];
@@ -71,10 +34,11 @@ void Web3::initWeb3(const char* primaryRpc, const char* fallbackRpc) {
     
     // Default: let WiFiClientSecure/HTTP stack handle TLS using its configured trust store.
     // No AploCoin certificates are hardcoded and certificate validation is never disabled implicitly.
-    certMode = CERT_AUTO;
+    certMode = CERT_AUTO_RESOLVE;
     caCert = nullptr;
     certBundle = nullptr;
     certBundleSize = 0;
+    resolvedAutoCert = nullptr;
     
     selectHost();
 }
@@ -121,6 +85,10 @@ void Web3::setCertificateBundle(const uint8_t* bundle_start, size_t bundle_size)
 void Web3::setCertificate(const char* root_ca) {
     certMode = CERT_CA;
     caCert = root_ca;
+}
+
+void Web3::setAutoCertificate() {
+    certMode = CERT_AUTO_RESOLVE;
 }
 
 void Web3::setInsecure() {
@@ -372,28 +340,57 @@ string Web3::exec(const string* data) {
     return result;
 }
 
+static bool normalizeRpcHex(string *value)
+{
+    if (value == nullptr || value->empty()) {
+        return false;
+    }
+
+    if (value->length() >= 2 && value->at(0) == '0' &&
+        (value->at(1) == 'x' || value->at(1) == 'X')) {
+        *value = value->substr(2);
+    }
+
+    if (value->empty()) {
+        return false;
+    }
+
+    for (size_t i = 0; i < value->length(); ++i) {
+        if (!isxdigit(static_cast<unsigned char>(value->at(i)))) {
+            return false;
+        }
+    }
+    return true;
+}
+
 int Web3::getInt(const string* json) {
     string parseVal = getJsonResultValue(json);
+    if (!normalizeRpcHex(&parseVal)) return 0;
     return strtol(parseVal.c_str(), nullptr, 16);
 }
 
 long Web3::getLong(const string* json) {
     string parseVal = getJsonResultValue(json);
+    if (!normalizeRpcHex(&parseVal)) return 0;
     return strtol(parseVal.c_str(), nullptr, 16);
 }
 
 long long int Web3::getLongLong(const string* json) {
     string parseVal = getJsonResultValue(json);
+    if (!normalizeRpcHex(&parseVal)) return 0;
     return strtoll(parseVal.c_str(), nullptr, 16);
 }
 
 uint256_t Web3::getUint256(const string* json) {
     string parseVal = getJsonResultValue(json);
+    if (!normalizeRpcHex(&parseVal)) return uint256_t(0);
+    parseVal = "0x" + parseVal;
     return uint256_t(parseVal.c_str());
 }
 
 double Web3::getDouble(const string* json) {
     string parseVal = getJsonResultValue(json);
+    if (parseVal.empty()) return 0.0;
     return strtof(parseVal.c_str(), nullptr);
 }
 
@@ -401,6 +398,7 @@ bool Web3::getBool(const string* json) {
     string parseVal = getJsonResultValue(json);
     if (parseVal == "true") return true;
     if (parseVal == "false") return false;
+    if (!normalizeRpcHex(&parseVal)) return false;
     long v = strtol(parseVal.c_str(), nullptr, 16);
     return v > 0;
 }
@@ -427,17 +425,25 @@ string Web3::getString(const string *json)
     }
 
     vector<string> *v = Util::ConvertStringHexToABIArray(&parseVal);
+    if (v == nullptr || v->size() < 2) {
+        delete v;
+        return string("");
+    }
     
     uint256_t length = uint256_t(v->at(1));
     uint32_t lengthIndex = length;
 
     string asciiHex;
     int index = 2;
-    while (lengthIndex > 0)
+    while (lengthIndex > 0 && index < static_cast<int>(v->size()))
     {
         Serial.println(index);
         asciiHex += v->at(index++);
-        lengthIndex -= 32;
+        if (lengthIndex <= 32) {
+            lengthIndex = 0;
+        } else {
+            lengthIndex -= 32;
+        }
     }
 
     //convert ascii into string
@@ -452,20 +458,23 @@ string Web3::getString(const string *json)
  * Configure TLS certificate validation for HTTPS connections.
  * 
  * Four modes are supported:
- * 0. CERT_AUTO: Do not override WiFiClientSecure certificate handling.
- *    - Uses the TLS behavior configured by the active Arduino/ESP32 core.
- *    - This is the default and avoids hardcoded AploCoin certificates.
+ * 0. CERT_AUTO_RESOLVE: Use the bundled root CA selected for the target host.
+ *    - Defaults to ISRG Root X1, which validates Let's Encrypt endpoints.
+ *    - This is the default for HTTPS RPC endpoints.
  *
- * 1. CERT_BUNDLE: Use ESP32 CA certificate bundle (recommended for production)
+ * 1. CERT_AUTO: Do not override WiFiClientSecure certificate handling.
+ *    - Uses the TLS behavior configured by the active Arduino/ESP32 core.
+ *
+ * 2. CERT_BUNDLE: Use ESP32 CA certificate bundle (recommended for production)
  *    - Validates against Mozilla's root certificate set
  *    - Requires board_build.embed_files in platformio.ini
  *    - See: https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/protocols/esp_crt_bundle.html
  * 
- * 2. CERT_CA: Use specific CA certificate (PEM format)
+ * 3. CERT_CA: Use specific CA certificate (PEM format)
  *    - Validates against a single root CA certificate
  *    - Useful for pinning to a specific CA you control
  * 
- * 3. CERT_INSECURE: Explicitly disable certificate validation
+ * 4. CERT_INSECURE: Explicitly disable certificate validation
  *    - Connection is encrypted but server identity is NOT verified
  *    - Vulnerable to man-in-the-middle attacks
  *    - Use only for testing or when certificate validation is not feasible
@@ -521,6 +530,22 @@ void Web3::setupCert()
 #endif
             } else {
                 Serial.println("Warning: CERT_CA mode but certificate is null; using WiFiClientSecure defaults");
+            }
+            break;
+
+        case CERT_AUTO_RESOLVE:
+            resolvedAutoCert = getAploRootCAForHost(host);
+            if (resolvedAutoCert != nullptr) {
+#if defined(ESP8266)
+                BearSSL::X509List trustAnchor(resolvedAutoCert);
+                client->setTrustAnchors(&trustAnchor);
+#elif defined(ESP32)
+                client->setCACert(resolvedAutoCert);
+#else
+                client->setCACert(resolvedAutoCert);
+#endif
+            } else {
+                Serial.println("Warning: no bundled CA for RPC host; using WiFiClientSecure defaults");
             }
             break;
 

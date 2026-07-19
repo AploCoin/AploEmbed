@@ -30,13 +30,14 @@ Avoid tight polling loops against public endpoints.
 
 ## TLS
 
-AploEmbed leaves TLS handling to the active Arduino networking stack unless you configure a certificate bundle, PEM certificate, or insecure mode explicitly.
+AploEmbed automatically resolves a bundled root CA for HTTPS RPC endpoints by default. The bundled default is ISRG Root X1, which validates Let's Encrypt certificates including the public AploCoin RPC endpoints. You can still override TLS with a CA bundle, a specific PEM certificate, or explicit insecure mode.
 
 Preferred options:
 
-1. Use a CA bundle on ESP32 PlatformIO builds.
-2. Use a PEM root certificate with `setCertificate(...)`.
-3. Use `setInsecure()` only for local testing.
+1. Use the default auto resolver (`Web3()` or `web3.setAutoCertificate()`), which currently resolves to bundled ISRG Root X1 for Let's Encrypt endpoints.
+2. Use a PEM root certificate with `setCertificate(...)` when your custom RPC endpoint uses a different CA.
+3. Use a generated CA bundle on ESP32 PlatformIO builds when you need a broader trust store.
+4. Use `setInsecure()` only for temporary local testing.
 
 ### ESP32 CA bundle
 
@@ -55,13 +56,24 @@ web3.setCertificateBundle(
 );
 ```
 
+### Auto root CA resolution
+
+```cpp
+Web3 web3; // auto root CA resolution is enabled by default
+
+// Optional explicit form:
+web3.setAutoCertificate();
+```
+
+The auto resolver uses the bundled `APLO_ISRG_ROOT_X1_CA` trust anchor. This works for custom HTTPS RPC domains that use Let's Encrypt. For custom endpoints using another CA, pass that CA explicitly.
+
 ### PEM root certificate
 
 ```cpp
-const char* root_ca = "-----BEGIN CERTIFICATE-----\n...";
+const char* custom_root_ca = "-----BEGIN CERTIFICATE-----\n...";
 
-Web3 web3;
-web3.setCertificate(root_ca);
+Web3 web3("custom-rpc.example.com");
+web3.setCertificate(custom_root_ca);
 ```
 
 ESP8266 uses BearSSL trust anchors internally. ESP32 CA bundles are not available on ESP8266.

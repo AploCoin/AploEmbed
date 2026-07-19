@@ -2,7 +2,6 @@
 #define APLOEMBED_NODES_H
 
 // AploCoin RPC endpoints
-// NOTE: pub1 and pub2 are planned hostnames - do NOT use for live requests yet
 #define APLO_PRIMARY_RPC_URL "pub1.aplocoin.com"
 #define APLO_FALLBACK_RPC_URL "pub2.aplocoin.com"
 

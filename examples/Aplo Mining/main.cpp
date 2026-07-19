@@ -90,6 +90,7 @@ void setup()
     // Initialize Web3 with default AploCoin RPC endpoints
     // Uses pub1.aplocoin.com as primary, pub2.aplocoin.com as fallback
     web3 = new Web3();
+    // Web3 auto-selects the bundled root CA for HTTPS RPC endpoints.
     
     // Alternative: specify custom RPC endpoint
     // web3 = new Web3("custom-rpc.aplocoin.com");
@@ -99,7 +100,8 @@ void setup()
     
     Serial.println("Web3 initialized with AploCoin RPC endpoints");
     Serial.println("Primary: pub1.aplocoin.com");
-    Serial.println("Fallback: pub2.aplocoin.com\n");
+    Serial.println("Fallback: pub2.aplocoin.com");
+    Serial.println("TLS: auto root CA resolution enabled\n");
     
     Serial.print("Mining Contract: ");
     Serial.println(APLO_MINING_CONTRACT);
@@ -266,23 +268,18 @@ MinerParams getMinerParams(const char *address)
         params.lastBlock = (uint32_t)lastBlock;
         params.totalMined = (uint32_t)totalMined;
         
-        // Convert uint256_t to hex string
-        char diffHex[67], prevHashHex[67];
-        snprintf(diffHex, sizeof(diffHex), "0x%064llx%064llx", 
-                 (unsigned long long)(currentDifficulty >> 64), 
-                 (unsigned long long)(currentDifficulty & 0xFFFFFFFFFFFFFFFFULL));
-        snprintf(prevHashHex, sizeof(prevHashHex), "0x%064llx%064llx",
-                 (unsigned long long)(prevHash >> 64),
-                 (unsigned long long)(prevHash & 0xFFFFFFFFFFFFFFFFULL));
-        
-        params.currentDifficulty = String(diffHex);
-        params.prevHash = String(prevHashHex);
+        // Convert uint256_t to canonical 32-byte hex strings.
+        string diffHex = "0x" + currentDifficulty.str(16, 64);
+        string prevHashHex = "0x" + prevHash.str(16, 64);
+
+        params.currentDifficulty = String(diffHex.c_str());
+        params.prevHash = String(prevHashHex.c_str());
     } else {
-        // Fallback to safe defaults if RPC call fails
+        Serial.println("ERROR: failed to read miner_params(address) from RPC.");
         params.lastBlock = 0;
-        params.currentDifficulty = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+        params.currentDifficulty = "";
         params.totalMined = 0;
-        params.prevHash = "0x0000000000000000000000000000000000000000000000000000000000000000";
+        params.prevHash = "";
     }
     
     Serial.println("Miner Parameters:");
@@ -300,9 +297,17 @@ bool attemptMining(const char *address)
 {
     // Get current miner parameters
     MinerParams params = getMinerParams(address);
-    
+    if (params.currentDifficulty.length() == 0 || params.prevHash.length() == 0) {
+        Serial.println("Mining paused: RPC/miner params unavailable. Retrying next cycle.\n");
+        return false;
+    }
+
     // Get current block number
     int currentBlock = web3->EthBlockNumber();
+    if (currentBlock <= 0) {
+        Serial.println("Mining paused: current block unavailable from RPC. Retrying next cycle.\n");
+        return false;
+    }
     
     Serial.print("Current Block: ");
     Serial.println(currentBlock);

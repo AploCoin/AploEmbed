@@ -36,6 +36,7 @@ void setup()
     // Initialize Web3 with default AploCoin RPC endpoints
     // Uses pub1.aplocoin.com as primary, pub2.aplocoin.com as fallback
     web3 = new Web3();
+    // Web3 auto-selects the bundled root CA for HTTPS RPC endpoints.
     
     // Alternative: specify custom RPC endpoint
     // web3 = new Web3("custom-rpc.aplocoin.com");
@@ -45,7 +46,8 @@ void setup()
     
     Serial.println("Web3 initialized with AploCoin RPC endpoints");
     Serial.println("Primary: pub1.aplocoin.com");
-    Serial.println("Fallback: pub2.aplocoin.com\n");
+    Serial.println("Fallback: pub2.aplocoin.com");
+    Serial.println("TLS: auto root CA resolution enabled\n");
     
     // Query balance in both units
     queryAploBalance();
