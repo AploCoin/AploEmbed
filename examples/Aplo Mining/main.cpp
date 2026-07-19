@@ -3,6 +3,7 @@
 #include <Web3.h>
 #include <AploContracts.h>
 #include <Util.h>
+#include <Crypto.h>
 
 using std::string;
 
@@ -47,16 +48,16 @@ const char *ssid = "<YOUR_SSID>";
 const char *password = "<YOUR_WIFI_PASSWORD>";
 
 // Wallet configuration
-// SECURITY: Replace with your actual address and private key
+// SECURITY: Replace with your actual private key. The public address is derived
+// from it at runtime, so there is no separate address value to keep in sync.
 // WARNING: Keep your private key secret! Never share or commit it.
-#define MY_ADDRESS "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb"
-
 // CRITICAL: Replace with your actual 64-character hex private key (without 0x prefix)
 const char *PRIVATE_KEY = "0000000000000000000000000000000000000000000000000000000000000000";
+string myAddress;
 
 // Mining parameters
 #define BLOCK_COOLDOWN 20          // Minimum blocks between mine attempts
-#define HASH_ATTEMPTS_PER_CYCLE 100 // Number of nonces to try before checking block height
+#define HASH_ATTEMPTS_PER_CYCLE 2000 // Nonces to try before checking block height (~8 expected hits at 0x00ff...)
 #define CYCLE_DELAY_MS 1000        // Delay between hash cycles (ms)
 
 Web3 *web3;
@@ -75,78 +76,73 @@ void queryStakingStatus(const char *address);
 MinerParams getMinerParams(const char *address);
 bool attemptMining(const char *address);
 String generateRandomNonce();
-String hashNonce(const String &nonce, const char *address, const String &difficulty, 
+String hashNonce(const String &nonce, const char *address, const String &difficulty,
                  const String &prevHash, uint32_t totalMined);
 bool submitMineTransaction(const String &nonce);
-double queryBalance(const char *address);
+void queryBalances(const char *address);
 
-void setup() 
+void setup()
 {
     beginSerial();
     Serial.println("\n\n=== AploEmbed Mining Example ===\n");
-    
+
     setup_wifi();
-    
+
     // Initialize Web3 with default AploCoin RPC endpoints
     // Uses pub1.aplocoin.com as primary, pub2.aplocoin.com as fallback
     web3 = new Web3();
     // Web3 auto-selects the bundled root CA for HTTPS RPC endpoints.
-    
+
     // Alternative: specify custom RPC endpoint
     // web3 = new Web3("custom-rpc.aplocoin.com");
-    
+
     // Alternative: specify both primary and fallback
     // web3 = new Web3("primary-rpc.aplocoin.com", "fallback-rpc.aplocoin.com");
-    
+
     Serial.println("Web3 initialized with AploCoin RPC endpoints");
     Serial.println("Primary: pub1.aplocoin.com");
     Serial.println("Fallback: pub2.aplocoin.com");
     Serial.println("TLS: auto root CA resolution enabled\n");
-    
+
+    myAddress = Crypto::PrivateKeyToAddress(PRIVATE_KEY);
+
     Serial.print("Mining Contract: ");
     Serial.println(APLO_MINING_CONTRACT);
     Serial.print("Staking Contract: ");
     Serial.println(APLO_STAKING_CONTRACT);
     Serial.println();
-    
-    // Query current balance
-    double balance = queryBalance(MY_ADDRESS);
+
     Serial.print("My Address: ");
-    Serial.println(MY_ADDRESS);
-    Serial.print("Current Balance: ");
-    Serial.print(balance, 6);
-    Serial.println(" APLO\n");
-    
+    Serial.println(myAddress.c_str());
+    queryBalances(myAddress.c_str());
+
     // CRITICAL: Check staking status BEFORE attempting to mine
     Serial.println("=== Checking Staking Status ===\n");
-    queryStakingStatus(MY_ADDRESS);
-    
+    queryStakingStatus(myAddress.c_str());
+
     Serial.println("\n=== Starting Mining Loop ===\n");
     Serial.println("Mining will attempt to find valid nonces and submit transactions.");
     Serial.println("Press RESET to stop.\n");
 }
 
-void loop() 
+void loop()
 {
     // Attempt mining cycle
-    bool mined = attemptMining(MY_ADDRESS);
-    
+    bool mined = attemptMining(myAddress.c_str());
+
     if (mined) {
         Serial.println("\nSuccessfully mined and submitted transaction!");
         Serial.println("Waiting for block cooldown before next attempt...\n");
-        
-        // Update balance after successful mine
-        double newBalance = queryBalance(MY_ADDRESS);
-        Serial.print("Updated Balance: ");
-        Serial.print(newBalance, 6);
-        Serial.println(" APLO\n");
+
+        // Update balances after successful mine
+        queryBalances(myAddress.c_str());
     }
-    
+
     // Delay between mining cycles
     delay(CYCLE_DELAY_MS);
 }
 
-void setup_wifi() 
+void setup_wifi()
 {
     if (WiFi.status() == WL_CONNECTED) {
         return;
@@ -181,43 +177,44 @@ void setup_wifi()
     Serial.println();
 }
 
-double queryBalance(const char *address) 
+void queryBalances(const char *address)
 {
     string addr = address;
-    uint256_t balanceWei = web3->AploGetBalance(&addr);
-    
-    if (balanceWei == 0) {
-        return 0.0;
-    }
-    
-    // Convert wei to APLO (18 decimals)
-    string balanceAplo = Util::ConvertWeiToEthString(&balanceWei, 18);
-    return atof(balanceAplo.c_str());
+    string aploBalance = web3->AploGetAploBalanceString(&addr);
+    string gasBalance = web3->AploGetGasBalanceString(&addr);
+
+    Serial.print("APLO Balance: ");
+    Serial.print(aploBalance.c_str());
+    Serial.println(" APLO");
+
+    Serial.print("Gas Balance (GAPLO): ");
+    Serial.print(gasBalance.c_str());
+    Serial.println(" GAPLO\n");
 }
 
-void queryStakingStatus(const char *address) 
+void queryStakingStatus(const char *address)
 {
     string addr = address;
     string stakingContractAddr = APLO_STAKING_CONTRACT;
-    
+
     // Query stake amount
     uint256_t stakeWei = web3->AploGetStake(&stakingContractAddr, &addr);
     string stakeAplo = Util::ConvertWeiToEthString(&stakeWei, 18);
     double stakeAmount = atof(stakeAplo.c_str());
-    
+
     // Query multiplier (scaled by 10, e.g., 10 = 1.0x, 17 = 1.7x)
     uint256_t multiplierRaw = web3->AploGetStakeMultiplier(&stakingContractAddr, &addr);
     uint32_t multiplierScaled = (uint32_t)multiplierRaw;
     double multiplier = multiplierScaled / 10.0;
-    
+
     Serial.print("Staked Amount: ");
     Serial.print(stakeAmount, 2);
     Serial.println(" APLO");
-    
+
     Serial.print("Mining Multiplier: ");
     Serial.print(multiplier, 1);
     Serial.println("x");
-    
+
     // Determine tier and display status
     if (stakeAmount < 1000.0) {
         Serial.println("\nWARNING: Stake is below 1,000 APLO");
@@ -234,7 +231,7 @@ void queryStakingStatus(const char *address)
         Serial.print(": gas-based mining reward at ");
         Serial.print(multiplier, 1);
         Serial.println("x multiplier");
-        
+
         if (stakeAmount < 8000.0) {
             uint32_t nextTier = tier + 1;
             double nextMultiplier = (10.0 + nextTier) / 10.0;
@@ -250,24 +247,24 @@ void queryStakingStatus(const char *address)
     }
 }
 
-MinerParams getMinerParams(const char *address) 
+MinerParams getMinerParams(const char *address)
 {
     MinerParams params;
-    
+
     // Call miner_params(address) view function using Web3::AploGetMinerParams
     string addr = address;
     string miningContractAddr = APLO_MINING_CONTRACT;
-    
+
     uint256_t lastBlock, currentDifficulty, totalMined, prevHash;
-    
+
     bool success = web3->AploGetMinerParams(&miningContractAddr, &addr,
                                             &lastBlock, &currentDifficulty,
                                             &totalMined, &prevHash);
-    
+
     if (success) {
         params.lastBlock = (uint32_t)lastBlock;
         params.totalMined = (uint32_t)totalMined;
-        
+
         // Convert uint256_t to canonical 32-byte hex strings.
         string diffHex = "0x" + currentDifficulty.str(16, 64);
         string prevHashHex = "0x" + prevHash.str(16, 64);
@@ -281,19 +278,20 @@ MinerParams getMinerParams(const char *address)
         params.totalMined = 0;
         params.prevHash = "";
     }
-    
+
     Serial.println("Miner Parameters:");
     Serial.print("  Last Block: ");
     Serial.println(params.lastBlock);
     Serial.print("  Total Mined: ");
     Serial.println(params.totalMined);
-    Serial.print("  Difficulty: ");
+    Serial.print("  Difficulty target: ");
     Serial.println(params.currentDifficulty);
-    
+    Serial.println("  Note: lower target = harder mining; 0x00ff... is about 1 valid nonce per 256 random attempts.");
+
     return params;
 }
 
-bool attemptMining(const char *address) 
+bool attemptMining(const char *address)
 {
     // Get current miner parameters
     MinerParams params = getMinerParams(address);
@@ -308,10 +306,10 @@ bool attemptMining(const char *address)
         Serial.println("Mining paused: current block unavailable from RPC. Retrying next cycle.\n");
         return false;
     }
-    
+
     Serial.print("Current Block: ");
     Serial.println(currentBlock);
-    
+
     // Check block cooldown
     if (currentBlock - params.lastBlock < BLOCK_COOLDOWN) {
         uint32_t blocksRemaining = BLOCK_COOLDOWN - (currentBlock - params.lastBlock);
@@ -320,19 +318,19 @@ bool attemptMining(const char *address)
         Serial.println(" blocks remaining");
         return false;
     }
-    
+
     Serial.println("Cooldown complete, attempting to mine...");
-    
+
     // Try multiple nonces
     for (int i = 0; i < HASH_ATTEMPTS_PER_CYCLE; i++) {
         String nonce = generateRandomNonce();
-        String hash = hashNonce(nonce, address, params.currentDifficulty, 
+        String hash = hashNonce(nonce, address, params.currentDifficulty,
                                params.prevHash, params.totalMined);
-        
+
         // Compare hash with difficulty using proper uint256 comparison
         string hashStr = hash.c_str();
         string diffStr = params.currentDifficulty.c_str();
-        
+
         if (Util::CompareUint256(&hashStr, &diffStr)) {
             // Found valid nonce!
             Serial.println("\n\nVALID NONCE FOUND!");
@@ -340,23 +338,23 @@ bool attemptMining(const char *address)
             Serial.println(nonce);
             Serial.print("Hash: ");
             Serial.println(hash);
-            Serial.print("Difficulty: ");
+            Serial.print("Difficulty target: ");
             Serial.println(params.currentDifficulty);
-            
+
             // Submit mining transaction
             return submitMineTransaction(nonce);
         }
-        
+
         if (i % 10 == 0) {
             Serial.print(".");
         }
     }
-    
+
     Serial.println("\nNo valid nonce found in this cycle.");
     return false;
 }
 
-String generateRandomNonce() 
+String generateRandomNonce()
 {
     // Generate random 32-byte nonce (64 hex characters)
     String nonce = "0x";
@@ -366,44 +364,44 @@ String generateRandomNonce()
     return nonce;
 }
 
-String hashNonce(const String &nonce, const char *address, const String &difficulty, 
-                 const String &prevHash, uint32_t totalMined) 
+String hashNonce(const String &nonce, const char *address, const String &difficulty,
+                 const String &prevHash, uint32_t totalMined)
 {
     // Hash = keccak256(abi.encodePacked(address, nonce, difficulty, prevHash, totalMined))
     // This matches the WebMiner implementation
-    
+
     string addr = address;
     string nonceStr = nonce.c_str();
     string diffStr = difficulty.c_str();
     string prevHashStr = prevHash.c_str();
-    
+
     // Pack data according to Solidity abi.encodePacked
     string packed = Util::PackMiningData(&addr, &nonceStr, &diffStr, &prevHashStr, totalMined);
-    
+
     // Compute keccak256 hash
     string hash = Util::ComputeKeccak256(&packed);
-    
+
     return String(hash.c_str());
 }
 
-bool submitMineTransaction(const String &nonce) 
+bool submitMineTransaction(const String &nonce)
 {
     Serial.println("\nSubmitting mine transaction...");
-    
+
     // Call Web3::AploMine helper
     // This handles nonce validation, function encoding, nonce retrieval, gas price, signing, and submission
     string miningContractAddr = APLO_MINING_CONTRACT;
     string nonceStr = nonce.c_str();
-    string myAddr = MY_ADDRESS;
+    string myAddr = myAddress;
     string txHash = web3->AploMine(&miningContractAddr, &nonceStr, PRIVATE_KEY, &myAddr);
-    
+
     if (txHash.empty() || txHash == "0x" || txHash == "0x0") {
         Serial.println("Transaction failed!");
         return false;
     }
-    
+
     Serial.print("Transaction submitted: ");
     Serial.println(txHash.c_str());
-    
+
     return true;
 }

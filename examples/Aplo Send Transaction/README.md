@@ -19,7 +19,8 @@ This example demonstrates how to send APLO currency to another address using the
 2. Initializes Web3 with AploCoin RPC endpoints (pub1/pub2.aplocoin.com)
 3. Queries your current APLO balance
 4. Checks if you have sufficient balance (amount + gas buffer)
-5. Signs and sends a transaction to the recipient address
+5. Derives the sender address from the private key
+6. Signs and sends a transaction to the recipient address
 6. Displays the transaction hash for tracking
 
 ## Hardware Requirements
@@ -49,8 +50,7 @@ const char *password = "<YOUR_WIFI_PASSWORD>";
 **CRITICAL: Handle private keys securely!**
 
 ```cpp
-// Your wallet address (public, safe to share)
-#define MY_ADDRESS "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb"
+// Sender address is derived from PRIVATE_KEY at runtime.
 
 // Recipient address (verify carefully!)
 #define RECIPIENT_ADDRESS "0x007bEe82BDd9e866b2bd114780a47f2261C684E3"

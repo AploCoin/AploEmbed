@@ -86,6 +86,22 @@ void Crypto::PublicKeyToAddress(const uint8_t *publicKey, uint8_t *address)
     memcpy(address, &hashed[12], 20);
 }
 
+string Crypto::PrivateKeyToAddress(const char *privateKey)
+{
+    uint8_t privateKeyBytes[ETHERS_PRIVATEKEY_LENGTH];
+    uint8_t publicKey[ETHERS_PUBLICKEY_LENGTH];
+    uint8_t address[ETHERS_ADDRESS_LENGTH];
+
+    memset(privateKeyBytes, 0, sizeof(privateKeyBytes));
+    memset(publicKey, 0, sizeof(publicKey));
+    memset(address, 0, sizeof(address));
+
+    Util::ConvertHexToBytes(privateKeyBytes, privateKey, ETHERS_PRIVATEKEY_LENGTH);
+    PrivateKeyToPublic(privateKeyBytes, publicKey);
+    PublicKeyToAddress(publicKey, address);
+    return Util::ConvertBytesToHex(address, ETHERS_ADDRESS_LENGTH);
+}
+
 void Crypto::Keccak256(const uint8_t *data, uint16_t length, uint8_t *result)
 {
     keccak_256(data, length, result);

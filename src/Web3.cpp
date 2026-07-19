@@ -649,15 +649,48 @@ string Web3::execWithFailover(const string* data) {
 // AploCoin Balance Helpers
 // -------------------------------
 
-uint256_t Web3::AploGetBalance(const string* address) {
+static string encodeBalanceOf(const string* address) {
+    string addr = *address;
+    if (addr.substr(0, 2) == "0x" || addr.substr(0, 2) == "0X") {
+        addr = addr.substr(2);
+    }
+    while (addr.length() < 64) {
+        addr = "0" + addr;
+    }
+    return string("0x70a08231") + addr;
+}
+
+uint256_t Web3::AploGetAploBalance(const string* address) {
+    // APLO lives behind the built-in APLO contract at 0x...1235.
+    // balanceOf(address) reads StateDB.GetBalance directly in AploNode.
+    string functionData = encodeBalanceOf(address);
+    string aploContract = APLO_STAKING_CONTRACT;
+    string result = EthViewCall(&functionData, aploContract.c_str());
+    return getUint256(&result);
+}
+
+string Web3::AploGetAploBalanceString(const string* address) {
+    uint256_t balanceWei = AploGetAploBalance(address);
+    return Util::ConvertWeiToEthString(&balanceWei, 18);
+}
+
+uint256_t Web3::AploGetGasBalance(const string* address) {
+    // AploNode's eth_getBalance is intentionally patched to return the Gaplo
+    // gas-token balance from the GAplo contract, not the APLO balance.
     return EthGetBalance(address);
 }
 
-string Web3::AploGetBalanceInAplo(const string* address) {
-    uint256_t balanceWei = EthGetBalance(address);
-    // Convert from Gaplo (wei) to APLO (18 decimals)
-    // 1 APLO = 10^18 Gaplo
+string Web3::AploGetGasBalanceString(const string* address) {
+    uint256_t balanceWei = AploGetGasBalance(address);
     return Util::ConvertWeiToEthString(&balanceWei, 18);
+}
+
+uint256_t Web3::AploGetBalance(const string* address) {
+    return AploGetAploBalance(address);
+}
+
+string Web3::AploGetBalanceInAplo(const string* address) {
+    return AploGetAploBalanceString(address);
 }
 
 // -------------------------------
