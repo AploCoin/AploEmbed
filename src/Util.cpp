@@ -11,11 +11,57 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
+#include <cctype>
 #include <vector>
-#include "TagReader/TagReader.h"
 
 using std::string;
 using std::vector;
+
+
+static string getJsonResultValue(const string* json) {
+    if (json == nullptr) return string("");
+
+    size_t key = json->find("\"result\"");
+    if (key == string::npos) return string("");
+
+    size_t colon = json->find(':', key + 8);
+    if (colon == string::npos) return string("");
+
+    size_t start = colon + 1;
+    while (start < json->length() && isspace(static_cast<unsigned char>((*json)[start]))) {
+        start++;
+    }
+    if (start >= json->length()) return string("");
+
+    if ((*json)[start] == '"') {
+        start++;
+        string out;
+        bool escaped = false;
+        for (size_t i = start; i < json->length(); ++i) {
+            char c = (*json)[i];
+            if (escaped) {
+                out += c;
+                escaped = false;
+            } else if (c == '\\') {
+                escaped = true;
+            } else if (c == '"') {
+                break;
+            } else {
+                out += c;
+            }
+        }
+        return out;
+    }
+
+    size_t end = start;
+    while (end < json->length() && (*json)[end] != ',' && (*json)[end] != '}') {
+        end++;
+    }
+    while (end > start && isspace(static_cast<unsigned char>((*json)[end - 1]))) {
+        end--;
+    }
+    return json->substr(start, end - start);
+}
 static const char * _aploembed_hexStr = "0123456789ABCDEF";
 // returns output (header) length
 uint32_t Util::RlpEncodeWholeHeader(uint8_t* header_output, uint32_t total_len) {
@@ -156,7 +202,7 @@ vector<uint8_t> Util::RlpEncodeItemWithVector(const vector<uint8_t> input) {
     return output;
 }
 
-vector<uint8_t> Util::ConvertNumberToVector(unsigned long long val) 
+vector<uint8_t> Util::ConvertNumberToVector(unsigned long long val)
 {
 	vector<uint8_t> tmp;
 	vector<uint8_t> ret;
@@ -211,7 +257,7 @@ uint8_t Util::ConvertCharToByte(const uint8_t* ptr)
 	return strtol(c, nullptr, 16);
 }
 
-vector<uint8_t> Util::ConvertHexToVector(const uint8_t *in) 
+vector<uint8_t> Util::ConvertHexToVector(const uint8_t *in)
 {
     const uint8_t *ptr = in;
     vector<uint8_t> out;
@@ -269,7 +315,7 @@ uint8_t Util::HexToInt(uint8_t s) {
     return ret;
 }
 
-string Util::VectorToString(const vector<uint8_t> *buf) 
+string Util::VectorToString(const vector<uint8_t> *buf)
 {
     return ConvertBytesToHex((const uint8_t*)buf->data(), buf->size());
 }
@@ -532,13 +578,13 @@ string Util::ConvertHexToASCII(const char *result, size_t length)
 		index++;
 	}
 
-	return converted;  
+	return converted;
 }
 
 /**
  * Build a std::vector of bytes32 as hex strings
  **/
-vector<string>* Util::ConvertCharStrToVector32(const char *resultPtr, size_t resultSize, vector<string> *result) 
+vector<string>* Util::ConvertCharStrToVector32(const char *resultPtr, size_t resultSize, vector<string> *result)
 {
 	if (resultSize < 64) return result;
     if (resultPtr[0] == '0' && resultPtr[1] == 'x') resultPtr += 2;
@@ -562,14 +608,13 @@ vector<string>* Util::ConvertCharStrToVector32(const char *resultPtr, size_t res
 
 /**
  * @brief Only use to handle Ethereum results
- * 
- * @param result 
- * @return vector<string>* 
+ *
+ * @param result
+ * @return vector<string>*
  */
-vector<string>* Util::ConvertResultToArray(string *value) 
+vector<string>* Util::ConvertResultToArray(string *value)
 {
-    TagReader reader;
-    string result = reader.getTag(value, "result");
+    string result = getJsonResultValue(value);
 
     return ConvertStringHexToABIArray(&result);
 }
@@ -599,7 +644,7 @@ string Util::InterpretStringResult(const char *result)
     //convert to vector bytes32
     string retVal = "";
 
-    if (result != NULL && strlen(result) > 0) 
+    if (result != NULL && strlen(result) > 0)
     {
         vector<string> breakDown;
         Util::ConvertCharStrToVector32(result, strlen(result), &breakDown);
@@ -625,13 +670,13 @@ string Util::InterpretStringResult(const char *result)
 vector<string> *Util::InterpretVectorResult(string *result)
 {
     vector<string> *retVal = new vector<string>();
-    TagReader reader;
-    const char *value = reader.getTag(result, "result").c_str();
+    string resultValue = getJsonResultValue(result);
+    const char *value = resultValue.c_str();
 
-    if (value != NULL && strlen(value) > 0) 
+    if (value != NULL && resultValue.length() > 0)
     {
         vector<string> breakDown;
-        Util::ConvertCharStrToVector32(value, reader.length(), &breakDown);
+        Util::ConvertCharStrToVector32(value, resultValue.length(), &breakDown);
 
         if (breakDown.size() > 2)
         {
@@ -641,7 +686,7 @@ vector<string> *Util::InterpretVectorResult(string *result)
             if (dyn == 32) //array marker
             {
                 long length = strtol(itr++->c_str(), NULL, 16);
-                
+
                 //checksum
                 if (breakDown.size() != (length + 2))
                 {
@@ -651,7 +696,7 @@ vector<string> *Util::InterpretVectorResult(string *result)
                 for (;itr != breakDown.end(); itr++)
                 {
                     retVal->push_back(*itr);
-                }   
+                }
             }
         }
     }
@@ -747,56 +792,56 @@ string Util::intToHex(int value)
 // Mining Helper Functions
 // -------------------------------
 
-string Util::PackMiningData(const string* address, const string* nonce, 
-                             const string* difficulty, const string* prevHash, 
+string Util::PackMiningData(const string* address, const string* nonce,
+                             const string* difficulty, const string* prevHash,
                              uint32_t totalMined) {
     // Pack data for keccak256(abi.encodePacked(address, nonce, difficulty, prevHash, totalMined))
     // This matches Solidity's abi.encodePacked behavior
-    
+
     string packed = "";
-    
+
     // Remove 0x prefix from all hex strings
     string addr = *address;
     if (addr.substr(0, 2) == "0x") addr = addr.substr(2);
-    
+
     string nonceHex = *nonce;
     if (nonceHex.substr(0, 2) == "0x") nonceHex = nonceHex.substr(2);
-    
+
     string diffHex = *difficulty;
     if (diffHex.substr(0, 2) == "0x") diffHex = diffHex.substr(2);
-    
+
     string prevHashHex = *prevHash;
     if (prevHashHex.substr(0, 2) == "0x") prevHashHex = prevHashHex.substr(2);
-    
+
     // Pad address to 20 bytes (40 hex chars)
     while (addr.length() < 40) addr = "0" + addr;
-    
+
     // Pad nonce to 32 bytes (64 hex chars)
     while (nonceHex.length() < 64) nonceHex = "0" + nonceHex;
-    
+
     // Pad difficulty to 32 bytes (64 hex chars)
     while (diffHex.length() < 64) diffHex = "0" + diffHex;
-    
+
     // Pad prevHash to 32 bytes (64 hex chars)
     while (prevHashHex.length() < 64) prevHashHex = "0" + prevHashHex;
-    
+
     // Convert totalMined to 32-byte hex (big-endian)
     char totalMinedHex[65];
     snprintf(totalMinedHex, sizeof(totalMinedHex), "%064x", totalMined);
-    
+
     // Concatenate all parts
     packed = addr + nonceHex + diffHex + prevHashHex + string(totalMinedHex);
-    
+
     return packed;
 }
 
 string Util::ComputeKeccak256(const string* hexData) {
     // Convert hex string to bytes and compute keccak256
     vector<uint8_t> bytes = ConvertHexToVector(hexData);
-    
+
     uint8_t hash[32];
     Crypto::Keccak256(bytes.data(), bytes.size(), hash);
-    
+
     // Convert hash to hex string
     return "0x" + ConvertBytesToHex(hash, 32);
 }
@@ -804,18 +849,18 @@ string Util::ComputeKeccak256(const string* hexData) {
 bool Util::CompareUint256(const string* hash, const string* difficulty) {
     // Compare two uint256 hex strings
     // Returns true if hash < difficulty
-    
+
     string h = *hash;
     string d = *difficulty;
-    
+
     // Remove 0x prefix
     if (h.substr(0, 2) == "0x") h = h.substr(2);
     if (d.substr(0, 2) == "0x") d = d.substr(2);
-    
+
     // Pad to 64 hex chars (32 bytes)
     while (h.length() < 64) h = "0" + h;
     while (d.length() < 64) d = "0" + d;
-    
+
     // Lexicographic comparison works for same-length hex strings
     return h < d;
 }

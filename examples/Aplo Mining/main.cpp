@@ -5,6 +5,19 @@
 #include <Util.h>
 
 using std::string;
+
+static void beginSerial()
+{
+    beginSerial();
+#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+    unsigned long serialStart = millis();
+    while (!Serial && millis() - serialStart < 3000) {
+        delay(10);
+    }
+#endif
+    delay(300);
+}
+
 // ============================================================================
 // IMPORTANT SAFETY NOTES - READ BEFORE USE
 // ============================================================================
@@ -74,7 +87,7 @@ double queryBalance(const char *address);
 
 void setup() 
 {
-    Serial.begin(115200);
+    beginSerial();
     Serial.println("\n\n=== AploEmbed Mining Example ===\n");
     
     setup_wifi();

@@ -5,6 +5,19 @@
 #include <Util.h>
 
 using std::string;
+
+static void beginSerial()
+{
+    beginSerial();
+#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+    unsigned long serialStart = millis();
+    while (!Serial && millis() - serialStart < 3000) {
+        delay(10);
+    }
+#endif
+    delay(300);
+}
+
 // WiFi credentials - replace with your network details
 const char *ssid = "<YOUR_SSID>";
 const char *password = "<YOUR_WIFI_PASSWORD>";
@@ -21,7 +34,7 @@ void queryGaploBalance();
 
 void setup() 
 {
-    Serial.begin(115200);
+    beginSerial();
     Serial.println("\n\n=== AploEmbed Balance Query Example ===\n");
     
     setup_wifi();
@@ -124,7 +137,7 @@ void setup_wifi()
     }
 
     wificounter = 0;
-    while (WiFi.status() != WL_CONNECTED && wificounter < 10)
+    while (WiFi.status() != WL_CONNECTED && wificounter < 40)
     {
         for (int i = 0; i < 500; i++)
         {
@@ -134,12 +147,16 @@ void setup_wifi()
         wificounter++;
     }
 
-    if (wificounter >= 10)
+    if (wificounter >= 40)
     {
-        Serial.println("\nWiFi connection failed. Restarting...");
-        #if defined(ESP8266) || defined(ESP32)
-        ESP.restart();
-#endif
+        Serial.println("\nWiFi connection failed.");
+        Serial.print("WiFi status: ");
+        Serial.println(WiFi.status());
+        Serial.println("Check SSID/password, 2.4 GHz network, and router MAC filters.");
+        while (WiFi.status() != WL_CONNECTED) {
+            delay(1000);
+            Serial.print(".");
+        }
     }
 
     delay(10);
