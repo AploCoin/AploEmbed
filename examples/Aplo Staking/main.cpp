@@ -8,7 +8,7 @@ using std::string;
 
 static void beginSerial()
 {
-    beginSerial();
+    Serial.begin(115200);
 #if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
     unsigned long serialStart = millis();
     while (!Serial && millis() - serialStart < 3000) {
@@ -24,19 +24,19 @@ static void beginSerial()
 //
 // 1. NEVER commit your real private key to version control
 // 2. Staking LOCKS your APLO in the contract - ensure you understand the mechanism
-// 3. Minimum stake: 1,000 APLO to receive mining rewards (1.0× multiplier)
-// 4. Higher stakes increase mining multiplier up to 1.7× (8,000+ APLO)
+// 3. Minimum stake: 1,000 APLO to receive Gaplo mining rewards (1.0x multiplier)
+// 4. Higher stakes increase mining multiplier up to 1.7x (8,000+ APLO)
 // 5. Unstaking returns ALL staked APLO and resets multiplier to 0
 // 6. Test with small amounts first if possible
 // 7. Ensure sufficient balance for stake amount + gas fees
 //
 // Staking Tier Table (from AploNode builtin/aplo/aplo.go):
 //   < 1,000 APLO → multiplier 0   (no mining reward)
-//   ≥ 1,000 APLO → multiplier 1.0× (10/10)
-//   ≥ 2,000 APLO → multiplier 1.1× (11/10)
-//   ≥ 3,000 APLO → multiplier 1.2× (12/10)
+//   ≥ 1,000 APLO → multiplier 1.0x (10/10)
+//   ≥ 2,000 APLO → multiplier 1.1x (11/10)
+//   ≥ 3,000 APLO → multiplier 1.2x (12/10)
 //   ...
-//   ≥ 8,000 APLO → multiplier 1.7× (17/10, maximum)
+//   ≥ 8,000 APLO → multiplier 1.7x (17/10, maximum)
 //
 // ============================================================================
 
@@ -194,7 +194,7 @@ void queryStakingStatus(const char *address)
     Serial.print(stakeStr.c_str());
     Serial.println(" APLO");
     
-    // Get mining reward multiplier (scaled by 10: 10 = 1.0×, 17 = 1.7×)
+    // Get mining reward multiplier (scaled by 10: 10 = 1.0x, 17 = 1.7x)
     uint256_t multiplierScaled = web3->AploGetStakeMultiplier(&stakingContract, &addr);
     int multiplierInt = static_cast<uint32_t>(multiplierScaled);
     
@@ -205,7 +205,7 @@ void queryStakingStatus(const char *address)
         // Convert scaled multiplier to decimal (e.g., 10 → 1.0, 17 → 1.7)
         double multiplier = multiplierInt / 10.0;
         Serial.print(multiplier, 1);
-        Serial.print("× (");
+        Serial.print("x (");
         Serial.print(multiplierInt);
         Serial.println("/10)");
     }
@@ -214,23 +214,23 @@ void queryStakingStatus(const char *address)
     Serial.println("\nTier Information:");
     if (stakeDbl < 1000.0) {
         Serial.println("  Below minimum stake (1,000 APLO)");
-        Serial.println("  No mining rewards");
+        Serial.println("  No Gaplo mining rewards");
     } else if (stakeDbl < 2000.0) {
-        Serial.println("  Tier 1: 1,000-1,999 APLO → 1.0× multiplier");
+        Serial.println("  Tier 1: 1,000-1,999 APLO → 1.0x multiplier");
     } else if (stakeDbl < 3000.0) {
-        Serial.println("  Tier 2: 2,000-2,999 APLO → 1.1× multiplier");
+        Serial.println("  Tier 2: 2,000-2,999 APLO → 1.1x multiplier");
     } else if (stakeDbl < 4000.0) {
-        Serial.println("  Tier 3: 3,000-3,999 APLO → 1.2× multiplier");
+        Serial.println("  Tier 3: 3,000-3,999 APLO → 1.2x multiplier");
     } else if (stakeDbl < 5000.0) {
-        Serial.println("  Tier 4: 4,000-4,999 APLO → 1.3× multiplier");
+        Serial.println("  Tier 4: 4,000-4,999 APLO → 1.3x multiplier");
     } else if (stakeDbl < 6000.0) {
-        Serial.println("  Tier 5: 5,000-5,999 APLO → 1.4× multiplier");
+        Serial.println("  Tier 5: 5,000-5,999 APLO → 1.4x multiplier");
     } else if (stakeDbl < 7000.0) {
-        Serial.println("  Tier 6: 6,000-6,999 APLO → 1.5× multiplier");
+        Serial.println("  Tier 6: 6,000-6,999 APLO → 1.5x multiplier");
     } else if (stakeDbl < 8000.0) {
-        Serial.println("  Tier 7: 7,000-7,999 APLO → 1.6× multiplier");
+        Serial.println("  Tier 7: 7,000-7,999 APLO → 1.6x multiplier");
     } else {
-        Serial.println("  Tier 8 (MAX): 8,000+ APLO → 1.7× multiplier");
+        Serial.println("  Tier 8 (MAX): 8,000+ APLO → 1.7x multiplier");
     }
     
     Serial.println();
@@ -263,7 +263,7 @@ void stakeAplo(double aplo)
     Serial.println(APLO_STAKING_CONTRACT);
     Serial.print("  Value: ");
     Serial.print(aplo, 2);
-    Serial.println(" APLO (sent WITH transaction)");
+    Serial.println(" APLO (passed to stake(uint256), transaction value is 0)");
     Serial.println();
     
     // Call Web3::AploStake helper
@@ -333,7 +333,7 @@ void unstakeAplo()
         Serial.println();
         Serial.println("Your staked APLO will be returned to your address.");
         Serial.println("Mining multiplier will be reset to 0.");
-        Serial.println("You must stake again to receive mining rewards.");
+        Serial.println("You must stake again to receive Gaplo mining rewards.");
     }
     else
     {
