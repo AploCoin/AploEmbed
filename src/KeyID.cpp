@@ -16,12 +16,16 @@ KeyID::KeyID(Web3* web3)
   std::string privateKey = "";
   privateKeyBytes = new BYTE[ETHERS_PRIVATEKEY_LENGTH];
 
+#if defined(ESP8266)
+  EEPROM.begin(EEPROM_SIZE + 1);
+#else
   if (!EEPROM.begin(EEPROM_SIZE + 1))
   {
     Serial.println("failed to initialise EEPROM");
     delay(1000000);
     return;
   }
+#endif
 
   //fitst see if there's a stored key
   if (static_cast<uint8_t>(EEPROM.read(0)) == 64)

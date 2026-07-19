@@ -21,8 +21,7 @@ class KeyID;
 
 #include "stdint.h"
 #include "uint256/uint256_t.h"
-#include <WiFiClientSecure.h>
-#include <WiFiClient.h>
+#include "AploPlatform.h"
 #include <Contract.h>
 #include <Crypto.h>
 #include <KeyID.h>
@@ -30,8 +29,6 @@ class KeyID;
 #include <string.h>
 #include <string>
 #include "AploContracts.h"
-
-using namespace std;
 
 enum ConnectionStage
 {
@@ -73,8 +70,8 @@ public:
     // This is never enabled automatically.
     void setInsecure();
     
-    string Web3ClientVersion();
-    string Web3Sha3(const string* data);
+    std::string Web3ClientVersion();
+    std::string Web3Sha3(const std::string* data);
     int NetVersion();
     bool NetListening();
     int NetPeerCount();
@@ -85,54 +82,54 @@ public:
     long long int EthGasPrice();
     void EthAccounts(char** array, int size);
     int EthBlockNumber();
-    uint256_t EthGetBalance(const string* address);
-    int EthGetTransactionCount(const string* address);
-    string EthViewCall(const string* data, const char* to);
+    uint256_t EthGetBalance(const std::string* address);
+    int EthGetTransactionCount(const std::string* address);
+    std::string EthViewCall(const std::string* data, const char* to);
 
-    string EthCall(const string* from, const char* to, long gas, long gasPrice, const string* value, const string* data);
-    string EthSendSignedTransaction(const string* data, const uint32_t dataLen);
+    std::string EthCall(const std::string* from, const char* to, long gas, long gasPrice, const std::string* value, const std::string* data);
+    std::string EthSendSignedTransaction(const std::string* data, const uint32_t dataLen);
 
     // AploCoin-specific helpers
     // Balance helpers with unit conversion
     // Note: 1 APLO = 10^18 Gaplo (wei), similar to ETH/wei relationship
-    uint256_t AploGetBalance(const string* address);  // Returns balance in Gaplo (wei)
-    string AploGetBalanceInAplo(const string* address);  // Returns balance as APLO string (human-readable)
+    uint256_t AploGetBalance(const std::string* address);  // Returns balance in Gaplo (wei)
+    std::string AploGetBalanceInAplo(const std::string* address);  // Returns balance as APLO std::string (human-readable)
     
     // Staking operations (requires staking contract address, private key, and sender address)
     // All amounts in Gaplo (wei)
-    // Returns transaction hash on success, empty string on failure
-    string AploStake(const string* stakingContract, const uint256_t* amount, const char* privateKey, const string* fromAddress);
-    string AploUnstake(const string* stakingContract, const char* privateKey, const string* fromAddress);
-    uint256_t AploGetStake(const string* stakingContract, const string* account);
-    uint256_t AploGetStakeMultiplier(const string* stakingContract, const string* account);
+    // Returns transaction hash on success, empty std::string on failure
+    std::string AploStake(const std::string* stakingContract, const uint256_t* amount, const char* privateKey, const std::string* fromAddress);
+    std::string AploUnstake(const std::string* stakingContract, const char* privateKey, const std::string* fromAddress);
+    uint256_t AploGetStake(const std::string* stakingContract, const std::string* account);
+    uint256_t AploGetStakeMultiplier(const std::string* stakingContract, const std::string* account);
     
     // Mining helpers
     // Returns: last_block, current_difficulty, total_mined, prev_hash
-    bool AploGetMinerParams(const string* miningContract, const string* minerAddress,
+    bool AploGetMinerParams(const std::string* miningContract, const std::string* minerAddress,
                            uint256_t* lastBlock, uint256_t* currentDifficulty,
                            uint256_t* totalMined, uint256_t* prevHash);
-    // Submit mining transaction with valid nonce (32-byte hex string)
-    // Returns transaction hash on success, empty string on failure
-    string AploMine(const string* miningContract, const string* nonce, const char* privateKey, const string* fromAddress);
+    // Submit mining transaction with valid nonce (32-byte hex std::string)
+    // Returns transaction hash on success, empty std::string on failure
+    std::string AploMine(const std::string* miningContract, const std::string* nonce, const char* privateKey, const std::string* fromAddress);
 
-    long long int getLongLong(const string* json);
-    string getString(const string* json);
-    int getInt(const string* json);
-    uint256_t getUint256(const string* json);
+    long long int getLongLong(const std::string* json);
+    std::string getString(const std::string* json);
+    int getInt(const std::string* json);
+    uint256_t getUint256(const std::string* json);
     long long int getChainId() const;
-    string getResult(const string* json);
+    std::string getResult(const std::string* json);
 
 private:
-    string exec(const string* data);
-    string execWithFailover(const string* data);  // RPC failover wrapper
-    string generateJson(const string* method, const string* params);
+    std::string exec(const std::string* data);
+    std::string execWithFailover(const std::string* data);  // RPC failover wrapper
+    std::string generateJson(const std::string* method, const std::string* params);
     void selectHost();
     void setupCert();
     void initWeb3(const char* primaryRpc, const char* fallbackRpc);
     
-    long getLong(const string* json);
-    double getDouble(const string* json);
-    bool getBool(const string* json);
+    long getLong(const std::string* json);
+    double getDouble(const std::string* json);
+    bool getBool(const std::string* json);
 
 private:
     WiFiClientSecure *client;

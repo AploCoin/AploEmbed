@@ -4,13 +4,11 @@
 #include <string>
 #include <vector>
 
-using namespace std;
-
 class TagReader
 {
 public:
 	TagReader();
-	const string  getTag(const string * JSON_Str, const char * value);
+	const std::string  getTag(const std::string * JSON_Str, const char * value);
 	size_t		  length() { return _length; }
 	
 private:

@@ -11,7 +11,7 @@
 #include <string.h>
 #include <Arduino.h>
 
-using namespace std;
+using std::string;
 
 typedef enum STATE_DEF
 {
@@ -38,9 +38,8 @@ const string TagReader::getTag(const string *JSON_Str, const char *value)
 
 	//parse for the end value
 	READ_STATE read_state = KEY;
-	READ_STATE old_state;
+	READ_STATE old_state = KEY;
 	const char *value_ptr = NULL;
-	char *retValue;
 	size_t startIndex = 0;
 	_length = 0;
 

@@ -1,9 +1,10 @@
 #include <Arduino.h>
-#include <WiFi.h>
+#include <AploPlatform.h>
 #include <Web3.h>
 #include <AploContracts.h>
 #include <Util.h>
 
+using std::string;
 // ============================================================================
 // IMPORTANT SAFETY NOTES - READ BEFORE USE
 // ============================================================================

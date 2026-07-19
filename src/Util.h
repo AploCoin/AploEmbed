@@ -10,10 +10,9 @@
 
 #include <stdint.h>
 #include <vector>
+#include <string>
 #include <sstream>
 #include "uint256/uint256_t.h"
-
-using namespace std;
 
 class Util {
 public:
@@ -21,49 +20,49 @@ public:
     // reference:
     //     https://github.com/ethereum/wiki/wiki/%5BEnglish%5D-RLP
     static uint32_t        RlpEncodeWholeHeader(uint8_t *header_output, uint32_t total_len);
-    static vector<uint8_t> RlpEncodeWholeHeaderWithVector(uint32_t total_len);
+    static std::vector<uint8_t> RlpEncodeWholeHeaderWithVector(uint32_t total_len);
     static uint32_t        RlpEncodeItem(uint8_t* output, const uint8_t* input, uint32_t input_len);
-    static vector<uint8_t> RlpEncodeItemWithVector(const vector<uint8_t> input);
+    static std::vector<uint8_t> RlpEncodeItemWithVector(const std::vector<uint8_t> input);
 
     static uint32_t        ConvertNumberToUintArray(uint8_t *str, uint32_t val);
-    static vector<uint8_t> ConvertNumberToVector(uint32_t val);
-    static vector<uint8_t> ConvertNumberToVector(unsigned long long val);
+    static std::vector<uint8_t> ConvertNumberToVector(uint32_t val);
+    static std::vector<uint8_t> ConvertNumberToVector(unsigned long long val);
     static uint32_t        ConvertCharStrToUintArray(uint8_t *out, const uint8_t *in);
-    static vector<uint8_t> ConvertHexToVector(const uint8_t *in);
-    static vector<uint8_t> ConvertHexToVector(const string* str);
+    static std::vector<uint8_t> ConvertHexToVector(const uint8_t *in);
+    static std::vector<uint8_t> ConvertHexToVector(const std::string* str);
     static char *          ConvertToString(const uint8_t *in);
 
     static uint8_t HexToInt(uint8_t s);
-    static string  VectorToString(const vector<uint8_t> *buf);
-    static string  PlainVectorToString(const vector<uint8_t> *buf);
-    static string  ConvertBytesToHex(const uint8_t *bytes, int length);
+    static std::string  VectorToString(const std::vector<uint8_t> *buf);
+    static std::string  PlainVectorToString(const std::vector<uint8_t> *buf);
+    static std::string  ConvertBytesToHex(const uint8_t *bytes, int length);
     static void    ConvertHexToBytes(uint8_t *_dst, const char *_src, int length);
-    static string  ConvertBase(int from, int to, const char *s);
-    static string  ConvertDecimal(int decimal, string *s);
-    static string  ConvertString(const char* value);
-    static string  ConvertHexToASCII(const char *result, size_t length);
-    static string  InterpretStringResult(const char *result);
-    static vector<string>* InterpretVectorResult(string *result);
-    static void PadForward(string *target, int targetSize);
+    static std::string  ConvertBase(int from, int to, const char *s);
+    static std::string  ConvertDecimal(int decimal, std::string *s);
+    static std::string  ConvertString(const char* value);
+    static std::string  ConvertHexToASCII(const char *result, size_t length);
+    static std::string  InterpretStringResult(const char *result);
+    static std::vector<std::string>* InterpretVectorResult(std::string *result);
+    static void PadForward(std::string *target, int targetSize);
     static uint256_t ConvertToWei(double val, int decimals);
-    static string ConvertWeiToEthString(uint256_t *weiVal, int decimals);
-    static string intToHex(int value);
+    static std::string ConvertWeiToEthString(uint256_t *weiVal, int decimals);
+    static std::string intToHex(int value);
 
-    static vector<string>* ConvertCharStrToVector32(const char *resultPtr, size_t resultSize, vector<string> *result);
-    static vector<string>* ConvertResultToArray(string *result);
-    static vector<string>* ConvertStringHexToABIArray(string *value); 
+    static std::vector<std::string>* ConvertCharStrToVector32(const char *resultPtr, size_t resultSize, std::vector<std::string> *result);
+    static std::vector<std::string>* ConvertResultToArray(std::string *result);
+    static std::vector<std::string>* ConvertStringHexToABIArray(std::string *value);
 
-    static string  ConvertEthToWei(double eth);
-    static string toString(int value);
+    static std::string  ConvertEthToWei(double eth);
+    static std::string toString(int value);
 
-    static string ConvertIntegerToBytes(const int32_t value);
+    static std::string ConvertIntegerToBytes(const int32_t value);
 
     // Mining helpers
-    static string PackMiningData(const string* address, const string* nonce, 
-                                  const string* difficulty, const string* prevHash, 
+    static std::string PackMiningData(const std::string* address, const std::string* nonce,
+                                  const std::string* difficulty, const std::string* prevHash,
                                   uint32_t totalMined);
-    static string ComputeKeccak256(const string* hexData);
-    static bool CompareUint256(const string* hash, const string* difficulty);
+    static std::string ComputeKeccak256(const std::string* hexData);
+    static bool CompareUint256(const std::string* hash, const std::string* difficulty);
 
 private:
     static uint8_t ConvertCharToByte(const uint8_t* ptr);

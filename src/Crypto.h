@@ -6,8 +6,7 @@
 #define ARDUINO_WEB3_CRYPTO_H
 #include "Web3.h"
 #include <vector>
-
-using namespace std;
+#include <string>
 
 extern const char * PERSONAL_MESSAGE_PREFIX;
 
@@ -23,11 +22,11 @@ public:
     static void PrivateKeyToPublic(const uint8_t *privateKey, uint8_t *publicKey);
     static void PublicKeyToAddress(const uint8_t *publicKey, uint8_t *address);
     static void Keccak256(const uint8_t *data, uint16_t length, uint8_t *result);
-    static string ECRecoverFromPersonalMessage(string *signature, string *message);
-    static string ECRecoverFromHexMessage(string *signature, string *hex);
-    static string ECRecoverFromHash(string *signature, BYTE *digest);
+    static std::string ECRecoverFromPersonalMessage(std::string *signature, std::string *message);
+    static std::string ECRecoverFromHexMessage(std::string *signature, std::string *hex);
+    static std::string ECRecoverFromHash(std::string *signature, BYTE *digest);
 
-    static string Keccak256(vector<uint8_t> *bytes);
+    static std::string Keccak256(std::vector<uint8_t> *bytes);
 
 
 private:
