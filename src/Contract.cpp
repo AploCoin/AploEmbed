@@ -10,10 +10,35 @@
 #include "AploPlatform.h"
 #include "Util.h"
 #include <vector>
+#include <cstdlib>
+#include <cstdio>
 
 using std::string;
 using std::vector;
 #define SIGNATURE_LENGTH 64
+
+static bool isSizedUintType(const string& type, unsigned *bits)
+{
+    if (type == "uint") {
+        *bits = 256;
+        return true;
+    }
+    if (type.rfind("uint", 0) != 0 || type.find("[]") != string::npos) {
+        return false;
+    }
+    const char *digits = type.c_str() + 4;
+    if (*digits == '\0') {
+        *bits = 256;
+        return true;
+    }
+    char *end = nullptr;
+    unsigned long parsed = strtoul(digits, &end, 10);
+    if (end == digits || *end != '\0' || parsed == 0 || parsed > 256 || (parsed % 8) != 0) {
+        return false;
+    }
+    *bits = static_cast<unsigned>(parsed);
+    return true;
+}
 
 /**
  * Public functions
@@ -46,7 +71,7 @@ string Contract::SetupContractData(const char* func, ...)
     size_t paramCount = 0;
     vector<string> params;
     char *p;
-    char tmp[strlen(func)];
+    char tmp[strlen(func) + 1];
     memset(tmp, 0, sizeof(tmp));
     strcpy(tmp, func);
     strtok(tmp, "(");
@@ -81,9 +106,12 @@ string Contract::SetupContractData(const char* func, ...)
             isDynamic.push_back(false);
             dynamicStartPointer += 0x20;
         }
-        else if (strncmp(params[i].c_str(), "uint", sizeof("uint")) == 0 || strncmp(params[i].c_str(), "uint256", sizeof("uint256")) == 0)
+        unsigned uintBits = 0;
+        if (isSizedUintType(params[i], &uintBits))
         {
-            string output = GenerateBytesForUint(va_arg(args, uint256_t *));
+            string output = (uintBits == 256)
+                ? GenerateBytesForUint(va_arg(args, uint256_t *))
+                : GenerateBytesForUintPointer(va_arg(args, const void *), uintBits / 8);
             abiBlocks.push_back(output);
             isDynamic.push_back(false);
             dynamicStartPointer += 0x20;
@@ -249,6 +277,22 @@ string Contract::GenerateBytesForUint(const uint256_t *value)
 {
     std::vector<uint8_t> bits = value->export_bits();
     return Util::PlainVectorToString(&bits);
+}
+
+string Contract::GenerateBytesForUintPointer(const void *value, size_t byteSize)
+{
+    if (value == nullptr || byteSize == 0 || byteSize > 32) {
+        return string(64, '0');
+    }
+
+    const uint8_t *bytes = static_cast<const uint8_t *>(value);
+    string output(64, '0');
+    for (size_t i = 0; i < byteSize; ++i) {
+        char hex[3];
+        snprintf(hex, sizeof(hex), "%02x", bytes[byteSize - 1 - i]);
+        output.replace(64 - ((i + 1) * 2), 2, hex);
+    }
+    return output;
 }
 
 string Contract::GenerateBytesForInt(const int32_t value)

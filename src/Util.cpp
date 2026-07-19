@@ -7,6 +7,7 @@
 
 #include <Util.h>
 #include <Crypto.h>
+#include "TagReader/TagReader.h"
 #include <Arduino.h>
 #include <cstdio>
 #include <cstdlib>
@@ -20,47 +21,8 @@ using std::vector;
 
 static string getJsonResultValue(const string* json) {
     if (json == nullptr) return string("");
-
-    size_t key = json->find("\"result\"");
-    if (key == string::npos) return string("");
-
-    size_t colon = json->find(':', key + 8);
-    if (colon == string::npos) return string("");
-
-    size_t start = colon + 1;
-    while (start < json->length() && isspace(static_cast<unsigned char>((*json)[start]))) {
-        start++;
-    }
-    if (start >= json->length()) return string("");
-
-    if ((*json)[start] == '"') {
-        start++;
-        string out;
-        bool escaped = false;
-        for (size_t i = start; i < json->length(); ++i) {
-            char c = (*json)[i];
-            if (escaped) {
-                out += c;
-                escaped = false;
-            } else if (c == '\\') {
-                escaped = true;
-            } else if (c == '"') {
-                break;
-            } else {
-                out += c;
-            }
-        }
-        return out;
-    }
-
-    size_t end = start;
-    while (end < json->length() && (*json)[end] != ',' && (*json)[end] != '}') {
-        end++;
-    }
-    while (end > start && isspace(static_cast<unsigned char>((*json)[end - 1]))) {
-        end--;
-    }
-    return json->substr(start, end - start);
+    TagReader reader;
+    return reader.getTag(json, "result");
 }
 static const char * _aploembed_hexStr = "0123456789ABCDEF";
 // returns output (header) length

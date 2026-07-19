@@ -49,6 +49,7 @@ private:
     static std::string GenerateContractBytes(const char *func);
     std::string GenerateBytesForInt(const int32_t value);
     std::string GenerateBytesForUint(const uint256_t *value);
+    std::string GenerateBytesForUintPointer(const void *value, size_t byteSize);
     std::string GenerateBytesForAddress(const std::string *value);
     std::string GenerateBytesForString(const std::string *value);
     std::string GenerateBytesForBytes(const char* value, const int len);

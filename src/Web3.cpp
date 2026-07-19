@@ -8,6 +8,7 @@
 #include "Web3.h"
 
 #include "Util.h"
+#include "TagReader/TagReader.h"
 #include <iostream>
 #include <sstream>
 #include <cctype>
@@ -22,47 +23,8 @@ using std::vector;
 
 static string getJsonResultValue(const string* json) {
     if (json == nullptr) return string("");
-
-    size_t key = json->find("\"result\"");
-    if (key == string::npos) return string("");
-
-    size_t colon = json->find(':', key + 8);
-    if (colon == string::npos) return string("");
-
-    size_t start = colon + 1;
-    while (start < json->length() && isspace(static_cast<unsigned char>((*json)[start]))) {
-        start++;
-    }
-    if (start >= json->length()) return string("");
-
-    if ((*json)[start] == '"') {
-        start++;
-        string out;
-        bool escaped = false;
-        for (size_t i = start; i < json->length(); ++i) {
-            char c = (*json)[i];
-            if (escaped) {
-                out += c;
-                escaped = false;
-            } else if (c == '\\') {
-                escaped = true;
-            } else if (c == '"') {
-                break;
-            } else {
-                out += c;
-            }
-        }
-        return out;
-    }
-
-    size_t end = start;
-    while (end < json->length() && (*json)[end] != ',' && (*json)[end] != '}') {
-        end++;
-    }
-    while (end > start && isspace(static_cast<unsigned char>((*json)[end - 1]))) {
-        end--;
-    }
-    return json->substr(start, end - start);
+    TagReader reader;
+    return reader.getTag(json, "result");
 }
 void Web3::initWeb3(const char* primaryRpc, const char* fallbackRpc) {
     mem = new BYTE[sizeof(WiFiClientSecure)];
@@ -463,17 +425,25 @@ string Web3::getString(const string *json)
     }
 
     vector<string> *v = Util::ConvertStringHexToABIArray(&parseVal);
+    if (v == nullptr || v->size() < 2) {
+        delete v;
+        return string("");
+    }
     
     uint256_t length = uint256_t(v->at(1));
     uint32_t lengthIndex = length;
 
     string asciiHex;
     int index = 2;
-    while (lengthIndex > 0)
+    while (lengthIndex > 0 && index < static_cast<int>(v->size()))
     {
         Serial.println(index);
         asciiHex += v->at(index++);
-        lengthIndex -= 32;
+        if (lengthIndex <= 32) {
+            lengthIndex = 0;
+        } else {
+            lengthIndex -= 32;
+        }
     }
 
     //convert ascii into string

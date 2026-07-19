@@ -54,6 +54,29 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('&zeroValue,', web3)
         self.assertIn('architectures=esp32', read('library.properties'))
 
+    def test_json_result_parsing_is_centralized_in_tag_reader(self):
+        tag_reader = read('src/TagReader/TagReader.cpp')
+        web3 = read('src/Web3.cpp')
+        util = read('src/Util.cpp')
+        self.assertIn('size_t TagReader::parse(char *jsonBuffer)', tag_reader)
+        self.assertIn("*p = '\\0';", tag_reader)
+        self.assertIn('TagReader reader;', web3)
+        self.assertIn('return reader.getTag(json, "result");', web3)
+        self.assertIn('TagReader reader;', util)
+
+    def test_web3e_issue_regressions_are_hardened(self):
+        web3 = read('src/Web3.cpp')
+        contract = read('src/Contract.cpp')
+        keyid = read('src/KeyID.cpp')
+        self.assertIn('if (lengthIndex <= 32)', web3)
+        self.assertIn('index < static_cast<int>(v->size())', web3)
+        self.assertIn('isSizedUintType', contract)
+        self.assertIn('GenerateBytesForUintPointer', contract)
+        self.assertIn('uintBits / 8', contract)
+        self.assertIn('esp_fill_random', keyid)
+        self.assertIn('os_get_random', keyid)
+        self.assertNotIn('random_buffer(privateKeyBytes', keyid)
+
 
 if __name__ == '__main__':
     unittest.main()
