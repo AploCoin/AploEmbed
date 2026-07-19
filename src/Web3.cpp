@@ -861,10 +861,10 @@ string Web3::AploMine(const string* miningContract, const string* nonce, const c
     Contract contract(this, miningContract->c_str());
     contract.SetPrivateKey(privateKey);
     
-    // Build function call data: mine(bytes32)
-    // Ensure nonce has 0x prefix for SetupContractData
-    string nonceWithPrefix = "0x" + nonceStr;
-    string functionData = contract.SetupContractData("mine(bytes32)", &nonceWithPrefix);
+    // Build function call data: mine(bytes32). Keep this direct to avoid any
+    // varargs ABI ambiguity for fixed bytes types on small embedded targets.
+    // Selector: keccak256("mine(bytes32)")[:4] = 0x2fdc505e.
+    string functionData = "0x2fdc505e" + nonceStr;
     
     // Get current transaction nonce (not mining nonce)
     uint32_t txNonce = (uint32_t)EthGetTransactionCount(fromAddress);
