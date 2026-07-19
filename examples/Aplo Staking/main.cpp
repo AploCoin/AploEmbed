@@ -9,13 +9,7 @@ using std::string;
 static void beginSerial()
 {
     Serial.begin(115200);
-#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
-    unsigned long serialStart = millis();
-    while (!Serial && millis() - serialStart < 3000) {
-        delay(10);
-    }
-#endif
-    delay(300);
+    delay(1000);
 }
 
 // ============================================================================
@@ -25,7 +19,7 @@ static void beginSerial()
 // 1. NEVER commit your real private key to version control
 // 2. Staking LOCKS your APLO in the contract - ensure you understand the mechanism
 // 3. Minimum stake: 1,000 APLO to receive Gaplo mining rewards (1.0x multiplier)
-// 4. Higher stakes increase mining multiplier up to 1.7x (8,000+ APLO)
+// 4. Higher stakes increase only the mining reward multiplier up to 1.7x (8,000+ APLO)
 // 5. Unstaking returns ALL staked APLO and resets multiplier to 0
 // 6. Test with small amounts first if possible
 // 7. Ensure sufficient balance for stake amount + gas fees
@@ -238,7 +232,7 @@ void queryStakingStatus(const char *address)
 
 /**
  * Stake APLO in the staking contract
- * Locks the specified amount and increases mining multiplier
+ * Locks the specified amount and sets the mining reward multiplier tier
  * 
  * @param aplo Amount in APLO to stake (minimum 1,000 for rewards)
  */
@@ -282,7 +276,7 @@ void stakeAplo(double aplo)
         Serial.println(txHash.c_str());
         Serial.println();
         Serial.println("Your APLO is now staked in the contract.");
-        Serial.println("Mining multiplier will be updated based on total stake.");
+        Serial.println("Mining multiplier tier will be updated based on total stake; base reward still comes from gas spent.");
         Serial.println("Use unstake() to retrieve your staked APLO.");
     }
     else

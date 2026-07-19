@@ -44,7 +44,7 @@ board_build.partitions = no_ota.csv
 
 ## ESP32-C3
 
-ESP32-C3 may use native USB CDC for `Serial`. If flashing works but the serial monitor stays silent, enable CDC-on-boot:
+Start with the UART-safe configuration below. This matches boards where the ROM boot log appears in the same serial monitor as the application log.
 
 ```ini
 [env:esp32-c3-devkitm-1]
@@ -58,6 +58,13 @@ monitor_dtr = 0
 lib_deps =
   https://github.com/AploCoin/AploEmbed.git#master
 
+build_flags =
+  -DCORE_DEBUG_LEVEL=3
+```
+
+Only enable native USB CDC if your board is actually wired for it and you monitor the USB CDC port, not the UART bridge:
+
+```ini
 build_flags =
   -DCORE_DEBUG_LEVEL=3
   -DARDUINO_USB_MODE=1
