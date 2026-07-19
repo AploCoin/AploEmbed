@@ -56,19 +56,18 @@ const char *password = "<YOUR_WIFI_PASSWORD>";
 
 ### 2. Wallet Configuration
 
-Set the wallet details before sending transactions:
-
-Set your actual wallet details before sending transactions:
+Set your private key before sending transactions. The public address is derived from it at runtime:
 
 ```cpp
-#define MY_ADDRESS "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb"
 const char *PRIVATE_KEY = "0000000000000000000000000000000000000000000000000000000000000000";
+string myAddress = Crypto::PrivateKeyToAddress(PRIVATE_KEY);
 ```
 
 Security:
 - Never commit your real private key to version control
 - Keep your private key secret and secure
-- Consider using environment variables or secure storage for production
+- Do not paste a separate `myAddress.c_str()`; use the derived `myAddress` so signing and balance/staking queries always match
+- Consider using secure storage for production
 
 ### 3. Staking Amount
 
@@ -206,7 +205,7 @@ Queries and displays current stake amount and mining multiplier for an address.
 
 **Example:**
 ```cpp
-queryStakingStatus(MY_ADDRESS);
+queryStakingStatus(myAddress.c_str());
 ```
 
 #### `stakeAplo(amount)`
@@ -258,7 +257,7 @@ Returns the current stake amount for an address.
 **Example:**
 ```cpp
 string stakingContract = APLO_STAKING_CONTRACT;
-string addr = MY_ADDRESS;
+string addr = myAddress;
 uint256_t stakeGaplo = web3->AploGetStake(&stakingContract, &addr);
 ```
 
@@ -274,7 +273,7 @@ Returns the mining reward multiplier for an address.
 **Example:**
 ```cpp
 string stakingContract = APLO_STAKING_CONTRACT;
-string addr = MY_ADDRESS;
+string addr = myAddress;
 uint256_t multiplier = web3->AploGetStakeMultiplier(&stakingContract, &addr);
 // multiplier = 10 means 1.0x, 17 means 1.7x
 ```
@@ -296,7 +295,7 @@ Stakes APLO in the staking contract to set the Gaplo mining reward level/multipl
 ```cpp
 string stakingContract = APLO_STAKING_CONTRACT;
 uint256_t amount = Util::ConvertToWei(1000.0, 18);  // 1000 APLO
-string myAddr = MY_ADDRESS;
+string myAddr = myAddress;
 string txHash = web3->AploStake(&stakingContract, &amount, PRIVATE_KEY, &myAddr);
 ```
 
@@ -313,7 +312,7 @@ Unstakes all staked APLO and resets mining multiplier to 0.
 **Example:**
 ```cpp
 string stakingContract = APLO_STAKING_CONTRACT;
-string myAddr = MY_ADDRESS;
+string myAddr = myAddress;
 string txHash = web3->AploUnstake(&stakingContract, PRIVATE_KEY, &myAddr);
 ```
 
@@ -353,7 +352,7 @@ string aplo = Util::ConvertWeiToEthString(&gaplo, 18);  // Gaplo -> "1000.0"
 4. RPC endpoint unavailable
 
 **Solutions:**
-- Check balance with `queryBalance(MY_ADDRESS)`
+- Check balance with `queryBalance(myAddress.c_str())`
 - Verify private key is correct (64 hex characters, no 0x prefix)
 - Test WiFi connection
 - Try alternative RPC endpoint
@@ -425,7 +424,7 @@ The example includes commented-out code to test unstaking. To enable:
 Serial.println("\n=== Testing Unstake ===\n");
 unstakeAplo();
 Serial.println("\n=== Final Staking Status ===\n");
-queryStakingStatus(MY_ADDRESS);
+queryStakingStatus(myAddress.c_str());
 ```
 
 ### Cumulative Staking
@@ -435,11 +434,11 @@ To test cumulative staking (multiple stake calls):
 ```cpp
 // Stake 1,000 APLO
 stakeAplo(1000.0);
-queryStakingStatus(MY_ADDRESS);  // Shows 1,000 APLO, 1.0x multiplier
+queryStakingStatus(myAddress.c_str());  // Shows 1,000 APLO, 1.0x multiplier
 
 // Stake another 1,000 APLO
 stakeAplo(1000.0);
-queryStakingStatus(MY_ADDRESS);  // Shows 2,000 APLO, 1.1x multiplier
+queryStakingStatus(myAddress.c_str());  // Shows 2,000 APLO, 1.1x multiplier
 ```
 
 ### Periodic Status Monitoring
@@ -455,7 +454,7 @@ void loop()
     // Check every 60 seconds
     if (now - lastCheck > 60000) {
         Serial.println("\n=== Periodic Status Check ===\n");
-        queryStakingStatus(MY_ADDRESS);
+        queryStakingStatus(myAddress.c_str());
         lastCheck = now;
     }
     

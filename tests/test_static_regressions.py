@@ -77,6 +77,22 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('os_get_random', keyid)
         self.assertNotIn('random_buffer(privateKeyBytes', keyid)
 
+    def test_examples_derive_sender_address_from_private_key(self):
+        crypto_header = read('src/Crypto.h')
+        crypto_impl = read('src/Crypto.cpp')
+        self.assertIn('PrivateKeyToAddress(const char *privateKey)', crypto_header)
+        self.assertIn('PrivateKeyToPublic(privateKeyBytes, publicKey)', crypto_impl)
+        self.assertIn('PublicKeyToAddress(publicKey, address)', crypto_impl)
+        for rel in [
+            'examples/Aplo Mining/main.cpp',
+            'examples/Aplo Send Transaction/main.cpp',
+            'examples/Aplo Staking/main.cpp',
+        ]:
+            example = read(rel)
+            self.assertNotIn('#define MY_ADDRESS', example)
+            self.assertIn('Crypto::PrivateKeyToAddress(PRIVATE_KEY)', example)
+            self.assertIn('string myAddress', example)
+
 
 if __name__ == '__main__':
     unittest.main()

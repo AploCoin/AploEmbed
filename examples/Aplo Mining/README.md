@@ -50,11 +50,11 @@ Edit `main.cpp`:
 const char *ssid = "YourNetworkName";
 const char *password = "YourWiFiPassword";
 
-#define MY_ADDRESS "0xYourWalletAddress"
+// Public address is derived from PRIVATE_KEY at runtime.
 const char *PRIVATE_KEY = "your64characterhexprivatekeywithout0xprefix";
 ```
 
-Do not commit a real private key.
+Do not commit a real private key. The examples derive the sender address from `PRIVATE_KEY` with `Crypto::PrivateKeyToAddress()`, so you do not need to paste a separate public wallet address.
 
 ## Build
 
