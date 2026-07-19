@@ -97,8 +97,12 @@ public:
     // AploCoin-specific helpers
     // Balance helpers with unit conversion
     // Note: 1 APLO = 10^18 Gaplo (wei), similar to ETH/wei relationship
-    uint256_t AploGetBalance(const std::string* address);  // Returns balance in Gaplo (wei)
-    std::string AploGetBalanceInAplo(const std::string* address);  // Returns balance as APLO std::string (human-readable)
+    uint256_t AploGetAploBalance(const std::string* address);  // APLO balance in wei units
+    std::string AploGetAploBalanceString(const std::string* address);  // APLO balance as human-readable APLO
+    uint256_t AploGetGasBalance(const std::string* address);  // Gas balance in Gaplo units
+    std::string AploGetGasBalanceString(const std::string* address);  // Gas balance as human-readable GAPLO
+    uint256_t AploGetBalance(const std::string* address);  // Backward compatible alias for APLO balance
+    std::string AploGetBalanceInAplo(const std::string* address);  // Backward compatible alias for APLO balance
     
     // Staking operations (requires staking contract address, private key, and sender address)
     // All amounts in Gaplo (wei)

@@ -22,7 +22,7 @@ Mining and staking use different units:
 6. If the hash is below the current difficulty, submit `mine(bytes32)`.
 7. If the transaction succeeds, AploNode calculates the base Gaplo reward from gas spent, then applies the staking multiplier.
 
-The `mine(bytes32)` call is a normal contract transaction. The wallet still needs APLO for gas.
+The `mine(bytes32)` call is a normal contract transaction. AploCoin uses two balances: native APLO for staking/value and Gaplo as the gas token. AploNode patches `eth_getBalance` to return Gaplo, so the example prints both native APLO (`balanceOf` on `0x...1235`) and Gaplo gas balance (`eth_getBalance` / `0x...1234`).
 
 ## Staking requirement
 
@@ -86,7 +86,7 @@ Current Block: ...
 Cooldown complete, attempting to mine...
 ```
 
-Finding a valid nonce is probabilistic. Most cycles will not find one.
+Finding a valid nonce is probabilistic. With the common `0x00ff...` target, roughly 1 in 256 random hashes should be valid. The example therefore tries 2,000 nonces per cycle; repeated misses over many cycles usually indicate a hashing/formatting bug rather than normal luck.
 
 ## Contract calls used
 

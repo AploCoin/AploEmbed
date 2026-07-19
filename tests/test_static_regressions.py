@@ -25,6 +25,7 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('0x7a766460', web3)  # getStake(address)
         self.assertIn('0xa9d637e1', web3)  # getMultiplier(address)
         self.assertIn('0xe31305ae', web3)  # miner_params(address)
+        self.assertIn('0x70a08231', web3)  # balanceOf(address)
 
     def test_trezor_includes_match_lowercase_repository_case(self):
         self.assertTrue((ROOT / 'src' / 'trezor' / 'rand.h').exists())
@@ -76,6 +77,19 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('esp_fill_random', keyid)
         self.assertIn('os_get_random', keyid)
         self.assertNotIn('random_buffer(privateKeyBytes', keyid)
+
+    def test_mining_hash_and_balance_regressions(self):
+        util = read('src/Util.cpp')
+        web3 = read('src/Web3.cpp')
+        mining = read('examples/Aplo Mining/main.cpp')
+        self.assertIn('return ConvertBytesToHex(hash, 32);', util)
+        self.assertNotIn('return "0x" + ConvertBytesToHex(hash, 32);', util)
+        self.assertIn('stripHexPrefix(&h);', util)
+        self.assertIn('AploGetAploBalance', web3)
+        self.assertIn('AploGetGasBalance', web3)
+        self.assertIn('APLO Balance:', mining)
+        self.assertIn('Gas Balance (GAPLO):', mining)
+        self.assertIn('HASH_ATTEMPTS_PER_CYCLE 2000', mining)
 
     def test_examples_derive_sender_address_from_private_key(self):
         crypto_header = read('src/Crypto.h')

@@ -797,6 +797,13 @@ string Util::PackMiningData(const string* address, const string* nonce,
     return packed;
 }
 
+static void stripHexPrefix(string *value) {
+    while (value->length() >= 2 && value->at(0) == '0' &&
+           (value->at(1) == 'x' || value->at(1) == 'X')) {
+        *value = value->substr(2);
+    }
+}
+
 string Util::ComputeKeccak256(const string* hexData) {
     // Convert hex string to bytes and compute keccak256
     vector<uint8_t> bytes = ConvertHexToVector(hexData);
@@ -804,25 +811,36 @@ string Util::ComputeKeccak256(const string* hexData) {
     uint8_t hash[32];
     Crypto::Keccak256(bytes.data(), bytes.size(), hash);
 
-    // Convert hash to hex string
-    return "0x" + ConvertBytesToHex(hash, 32);
+    // ConvertBytesToHex already returns a canonical 0x-prefixed value.
+    return ConvertBytesToHex(hash, 32);
 }
 
 bool Util::CompareUint256(const string* hash, const string* difficulty) {
-    // Compare two uint256 hex strings
-    // Returns true if hash < difficulty
-
+    // Compare two uint256 hex strings. Returns true if hash < difficulty.
     string h = *hash;
     string d = *difficulty;
 
-    // Remove 0x prefix
-    if (h.substr(0, 2) == "0x") h = h.substr(2);
-    if (d.substr(0, 2) == "0x") d = d.substr(2);
+    // Be defensive: older builds briefly produced values like "0x0x...".
+    stripHexPrefix(&h);
+    stripHexPrefix(&d);
+
+    if (h.length() > 64 || d.length() > 64) {
+        return false;
+    }
 
     // Pad to 64 hex chars (32 bytes)
     while (h.length() < 64) h = "0" + h;
     while (d.length() < 64) d = "0" + d;
 
-    // Lexicographic comparison works for same-length hex strings
+    for (size_t i = 0; i < 64; ++i) {
+        h[i] = static_cast<char>(tolower(static_cast<unsigned char>(h[i])));
+        d[i] = static_cast<char>(tolower(static_cast<unsigned char>(d[i])));
+        if (!isxdigit(static_cast<unsigned char>(h[i])) ||
+            !isxdigit(static_cast<unsigned char>(d[i]))) {
+            return false;
+        }
+    }
+
+    // Lexicographic comparison works for same-length normalized hex strings.
     return h < d;
 }

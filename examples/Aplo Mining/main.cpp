@@ -57,7 +57,7 @@ string myAddress;
 
 // Mining parameters
 #define BLOCK_COOLDOWN 20          // Minimum blocks between mine attempts
-#define HASH_ATTEMPTS_PER_CYCLE 100 // Number of nonces to try before checking block height
+#define HASH_ATTEMPTS_PER_CYCLE 2000 // Nonces to try before checking block height (~8 expected hits at 0x00ff...)
 #define CYCLE_DELAY_MS 1000        // Delay between hash cycles (ms)
 
 Web3 *web3;
@@ -79,7 +79,7 @@ String generateRandomNonce();
 String hashNonce(const String &nonce, const char *address, const String &difficulty,
                  const String &prevHash, uint32_t totalMined);
 bool submitMineTransaction(const String &nonce);
-double queryBalance(const char *address);
+void queryBalances(const char *address);
 
 void setup()
 {
@@ -112,13 +112,9 @@ void setup()
     Serial.println(APLO_STAKING_CONTRACT);
     Serial.println();
 
-    // Query current balance
-    double balance = queryBalance(myAddress.c_str());
     Serial.print("My Address: ");
     Serial.println(myAddress.c_str());
-    Serial.print("Current Balance: ");
-    Serial.print(balance, 6);
-    Serial.println(" APLO\n");
+    queryBalances(myAddress.c_str());
 
     // CRITICAL: Check staking status BEFORE attempting to mine
     Serial.println("=== Checking Staking Status ===\n");
@@ -138,11 +134,8 @@ void loop()
         Serial.println("\nSuccessfully mined and submitted transaction!");
         Serial.println("Waiting for block cooldown before next attempt...\n");
 
-        // Update balance after successful mine
-        double newBalance = queryBalance(myAddress.c_str());
-        Serial.print("Updated Balance: ");
-        Serial.print(newBalance, 6);
-        Serial.println(" APLO\n");
+        // Update balances after successful mine
+        queryBalances(myAddress.c_str());
     }
 
     // Delay between mining cycles
@@ -184,18 +177,19 @@ void setup_wifi()
     Serial.println();
 }
 
-double queryBalance(const char *address)
+void queryBalances(const char *address)
 {
     string addr = address;
-    uint256_t balanceWei = web3->AploGetBalance(&addr);
+    string aploBalance = web3->AploGetAploBalanceString(&addr);
+    string gasBalance = web3->AploGetGasBalanceString(&addr);
 
-    if (balanceWei == 0) {
-        return 0.0;
-    }
+    Serial.print("APLO Balance: ");
+    Serial.print(aploBalance.c_str());
+    Serial.println(" APLO");
 
-    // Convert wei to APLO (18 decimals)
-    string balanceAplo = Util::ConvertWeiToEthString(&balanceWei, 18);
-    return atof(balanceAplo.c_str());
+    Serial.print("Gas Balance (GAPLO): ");
+    Serial.print(gasBalance.c_str());
+    Serial.println(" GAPLO\n");
 }
 
 void queryStakingStatus(const char *address)
@@ -290,8 +284,9 @@ MinerParams getMinerParams(const char *address)
     Serial.println(params.lastBlock);
     Serial.print("  Total Mined: ");
     Serial.println(params.totalMined);
-    Serial.print("  Difficulty: ");
+    Serial.print("  Difficulty target: ");
     Serial.println(params.currentDifficulty);
+    Serial.println("  Note: lower target = harder mining; 0x00ff... is about 1 valid nonce per 256 random attempts.");
 
     return params;
 }
@@ -343,7 +338,7 @@ bool attemptMining(const char *address)
             Serial.println(nonce);
             Serial.print("Hash: ");
             Serial.println(hash);
-            Serial.print("Difficulty: ");
+            Serial.print("Difficulty target: ");
             Serial.println(params.currentDifficulty);
 
             // Submit mining transaction
