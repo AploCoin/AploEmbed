@@ -38,6 +38,29 @@ lib_deps =
 2. In Arduino IDE: Sketch → Include Library → Add .ZIP Library
 3. Select the downloaded ZIP file
 
+
+
+### ESP32-C3 serial monitor
+
+When using native USB CDC on ESP32-C3, enable CDC-on-boot in your `platformio.ini` so `Serial` output appears after flashing:
+
+```ini
+[env:esp32-c3-devkitm-1]
+platform = espressif32
+board = esp32-c3-devkitm-1
+framework = arduino
+monitor_speed = 115200
+monitor_rts = 0
+monitor_dtr = 0
+build_flags =
+  -DARDUINO_USB_MODE=1
+  -DARDUINO_USB_CDC_ON_BOOT=1
+lib_deps =
+  https://github.com/AploCoin/AploEmbed.git#master
+```
+
+AploEmbed examples wait briefly for the USB serial monitor and do not reboot immediately on WiFi failure, so connection diagnostics remain visible. ESP32-C3 only supports 2.4 GHz WiFi.
+
 ## Quick Start
 
 ### Basic Setup

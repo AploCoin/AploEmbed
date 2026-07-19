@@ -8,15 +8,61 @@
 #include "Web3.h"
 
 #include "Util.h"
-#include "TagReader/TagReader.h"
 #include <iostream>
 #include <sstream>
+#include <cctype>
 #include "nodes.h"
 
 // Helper function to initialize Web3 instance
 using std::string;
 using std::stringstream;
 using std::vector;
+
+
+static string getJsonResultValue(const string* json) {
+    if (json == nullptr) return string("");
+
+    size_t key = json->find("\"result\"");
+    if (key == string::npos) return string("");
+
+    size_t colon = json->find(':', key + 8);
+    if (colon == string::npos) return string("");
+
+    size_t start = colon + 1;
+    while (start < json->length() && isspace(static_cast<unsigned char>((*json)[start]))) {
+        start++;
+    }
+    if (start >= json->length()) return string("");
+
+    if ((*json)[start] == '"') {
+        start++;
+        string out;
+        bool escaped = false;
+        for (size_t i = start; i < json->length(); ++i) {
+            char c = (*json)[i];
+            if (escaped) {
+                out += c;
+                escaped = false;
+            } else if (c == '\\') {
+                escaped = true;
+            } else if (c == '"') {
+                break;
+            } else {
+                out += c;
+            }
+        }
+        return out;
+    }
+
+    size_t end = start;
+    while (end < json->length() && (*json)[end] != ',' && (*json)[end] != '}') {
+        end++;
+    }
+    while (end > start && isspace(static_cast<unsigned char>((*json)[end - 1]))) {
+        end--;
+    }
+    return json->substr(start, end - start);
+}
 void Web3::initWeb3(const char* primaryRpc, const char* fallbackRpc) {
     mem = new BYTE[sizeof(WiFiClientSecure)];
     chainId = APLO_ID;  // Fixed to AploCoin chain ID (28282)
@@ -327,45 +373,40 @@ string Web3::exec(const string* data) {
 }
 
 int Web3::getInt(const string* json) {
-    TagReader reader;
-    string parseVal = reader.getTag(json, "result");
+    string parseVal = getJsonResultValue(json);
     return strtol(parseVal.c_str(), nullptr, 16);
 }
 
 long Web3::getLong(const string* json) {
-    TagReader reader;
-    string parseVal = reader.getTag(json, "result");
+    string parseVal = getJsonResultValue(json);
     return strtol(parseVal.c_str(), nullptr, 16);
 }
 
 long long int Web3::getLongLong(const string* json) {
-    TagReader reader;
-    string parseVal = reader.getTag(json, "result");
+    string parseVal = getJsonResultValue(json);
     return strtoll(parseVal.c_str(), nullptr, 16);
 }
 
 uint256_t Web3::getUint256(const string* json) {
-    TagReader reader;
-    string parseVal = reader.getTag(json, "result");
+    string parseVal = getJsonResultValue(json);
     return uint256_t(parseVal.c_str());
 }
 
 double Web3::getDouble(const string* json) {
-    TagReader reader;
-    string parseVal = reader.getTag(json, "result");
+    string parseVal = getJsonResultValue(json);
     return strtof(parseVal.c_str(), nullptr);
 }
 
 bool Web3::getBool(const string* json) {
-    TagReader reader;
-    string parseVal = reader.getTag(json, "result");
+    string parseVal = getJsonResultValue(json);
+    if (parseVal == "true") return true;
+    if (parseVal == "false") return false;
     long v = strtol(parseVal.c_str(), nullptr, 16);
     return v > 0;
 }
 
 string Web3::getResult(const string* json) {
-    TagReader reader;
-    string res = reader.getTag(json, "result");
+    string res = getJsonResultValue(json);
     if (res.length() == 0)
     {
         return string("");
@@ -379,8 +420,7 @@ string Web3::getResult(const string* json) {
 //Currently only works for string return eg: function name() returns (string)
 string Web3::getString(const string *json)
 {
-    TagReader reader;
-    string parseVal = reader.getTag(json, "result");
+    string parseVal = getJsonResultValue(json);
     if (parseVal.length() == 0)
     {
         return string("");
