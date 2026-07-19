@@ -8,7 +8,7 @@ using std::string;
 
 static void beginSerial()
 {
-    beginSerial();
+    Serial.begin(115200);
 #if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
     unsigned long serialStart = millis();
     while (!Serial && millis() - serialStart < 3000) {
@@ -23,27 +23,27 @@ static void beginSerial()
 // ============================================================================
 //
 // 1. NEVER commit your real private key to version control
-// 2. Mining requires minimum 1,000 APLO staked to receive rewards
+// 2. Mining requires minimum 1,000 APLO staked to receive Gaplo mining rewards
 // 3. Mining submits transactions that cost gas - ensure sufficient balance
 // 4. Mining difficulty adjusts dynamically based on network conditions
 // 5. Block reward cooldown: 20 blocks between successful mines per address
 // 6. Test with small amounts and monitor gas costs first
-// 7. Higher stake = higher mining multiplier (up to 1.7× at 8,000+ APLO)
+// 7. Higher stake = higher mining multiplier (up to 1.7x at 8,000+ APLO)
 //
 // Mining Process:
 //   1. Query miner_params(address) to get current difficulty and prev_hash
 //   2. Generate random nonce and hash it with miner params
 //   3. If hash < difficulty, submit mine(nonce) transaction
 //   4. Wait for 20+ blocks before next mine attempt
-//   5. Rewards are multiplied by staking tier (0× to 1.7×)
+//   5. Rewards are multiplied by staking tier (0x to 1.7x)
 //
 // Staking Tier Table (from AploNode builtin/aplo/aplo.go):
 //   < 1,000 APLO → multiplier 0   (no mining reward)
-//   ≥ 1,000 APLO → multiplier 1.0× (10/10)
-//   ≥ 2,000 APLO → multiplier 1.1× (11/10)
-//   ≥ 3,000 APLO → multiplier 1.2× (12/10)
+//   ≥ 1,000 APLO → multiplier 1.0x (10/10)
+//   ≥ 2,000 APLO → multiplier 1.1x (11/10)
+//   ≥ 3,000 APLO → multiplier 1.2x (12/10)
 //   ...
-//   ≥ 8,000 APLO → multiplier 1.7× (17/10, maximum)
+//   ≥ 8,000 APLO → multiplier 1.7x (17/10, maximum)
 //
 // ============================================================================
 
@@ -135,7 +135,7 @@ void loop()
     bool mined = attemptMining(MY_ADDRESS);
     
     if (mined) {
-        Serial.println("\n✓ Successfully mined and submitted transaction!");
+        Serial.println("\nSuccessfully mined and submitted transaction!");
         Serial.println("Waiting for block cooldown before next attempt...\n");
         
         // Update balance after successful mine
@@ -178,7 +178,7 @@ void setup_wifi()
         while (1) { delay(1000); }
     }
 
-    Serial.println("\n✓ WiFi connected");
+    Serial.println("\nWiFi connected");
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
     Serial.println();
@@ -208,7 +208,7 @@ void queryStakingStatus(const char *address)
     string stakeAplo = Util::ConvertWeiToEthString(&stakeWei, 18);
     double stakeAmount = atof(stakeAplo.c_str());
     
-    // Query multiplier (scaled by 10, e.g., 10 = 1.0×, 17 = 1.7×)
+    // Query multiplier (scaled by 10, e.g., 10 = 1.0x, 17 = 1.7x)
     uint256_t multiplierRaw = web3->AploGetStakeMultiplier(&stakingContractAddr, &addr);
     uint32_t multiplierScaled = (uint32_t)multiplierRaw;
     double multiplier = multiplierScaled / 10.0;
@@ -219,24 +219,24 @@ void queryStakingStatus(const char *address)
     
     Serial.print("Mining Multiplier: ");
     Serial.print(multiplier, 1);
-    Serial.println("×");
+    Serial.println("x");
     
     // Determine tier and display status
     if (stakeAmount < 1000.0) {
-        Serial.println("\n⚠ WARNING: Stake is below 1,000 APLO");
-        Serial.println("Mining will NOT earn rewards at 0× multiplier!");
-        Serial.println("Please stake at least 1,000 APLO to receive mining rewards.");
+        Serial.println("\nWARNING: Stake is below 1,000 APLO");
+        Serial.println("Mining will not earn Gaplo rewards at 0x multiplier.");
+        Serial.println("Please stake at least 1,000 APLO to receive Gaplo mining rewards.");
         Serial.println("See 'Aplo Staking' example for staking instructions.\n");
     } else if (stakeAmount < 2000.0) {
-        Serial.println("\n✓ Tier 1: Eligible for mining rewards at 1.0× multiplier");
-        Serial.println("Stake 2,000+ APLO to increase multiplier to 1.1×\n");
+        Serial.println("\nTier 1: Eligible for Gaplo mining rewards at 1.0x multiplier");
+        Serial.println("Stake 2,000+ APLO to increase multiplier to 1.1x\n");
     } else if (stakeAmount < 8000.0) {
         uint32_t tier = (uint32_t)(stakeAmount / 1000.0);
-        Serial.print("\n✓ Tier ");
+        Serial.print("\nTier ");
         Serial.print(tier);
-        Serial.print(": Mining rewards at ");
+        Serial.print(": Gaplo mining rewards at ");
         Serial.print(multiplier, 1);
-        Serial.println("× multiplier");
+        Serial.println("x multiplier");
         
         if (stakeAmount < 8000.0) {
             uint32_t nextTier = tier + 1;
@@ -245,10 +245,10 @@ void queryStakingStatus(const char *address)
             Serial.print(nextTier * 1000);
             Serial.print("+ APLO to increase multiplier to ");
             Serial.print(nextMultiplier, 1);
-            Serial.println("×\n");
+            Serial.println("x\n");
         }
     } else {
-        Serial.println("\n✓ MAX TIER: Mining rewards at 1.7× multiplier (maximum)");
+        Serial.println("\nMAX TIER: Gaplo mining rewards at 1.7x multiplier (maximum)");
         Serial.println("You have reached the highest staking tier!\n");
     }
 }
@@ -315,13 +315,13 @@ bool attemptMining(const char *address)
     // Check block cooldown
     if (currentBlock - params.lastBlock < BLOCK_COOLDOWN) {
         uint32_t blocksRemaining = BLOCK_COOLDOWN - (currentBlock - params.lastBlock);
-        Serial.print("⏳ Cooldown active: ");
+        Serial.print("Cooldown active: ");
         Serial.print(blocksRemaining);
         Serial.println(" blocks remaining");
         return false;
     }
     
-    Serial.println("✓ Cooldown complete, attempting to mine...");
+    Serial.println("Cooldown complete, attempting to mine...");
     
     // Try multiple nonces
     for (int i = 0; i < HASH_ATTEMPTS_PER_CYCLE; i++) {
@@ -335,7 +335,7 @@ bool attemptMining(const char *address)
         
         if (Util::CompareUint256(&hashStr, &diffStr)) {
             // Found valid nonce!
-            Serial.println("\n\n🎉 VALID NONCE FOUND!");
+            Serial.println("\n\nVALID NONCE FOUND!");
             Serial.print("Nonce: ");
             Serial.println(nonce);
             Serial.print("Hash: ");
@@ -388,7 +388,7 @@ String hashNonce(const String &nonce, const char *address, const String &difficu
 
 bool submitMineTransaction(const String &nonce) 
 {
-    Serial.println("\n🔨 Submitting mine transaction...");
+    Serial.println("\nSubmitting mine transaction...");
     
     // Call Web3::AploMine helper
     // This handles nonce validation, function encoding, nonce retrieval, gas price, signing, and submission
@@ -398,11 +398,11 @@ bool submitMineTransaction(const String &nonce)
     string txHash = web3->AploMine(&miningContractAddr, &nonceStr, PRIVATE_KEY, &myAddr);
     
     if (txHash.empty() || txHash == "0x" || txHash == "0x0") {
-        Serial.println("✗ Transaction failed!");
+        Serial.println("Transaction failed!");
         return false;
     }
     
-    Serial.print("✓ Transaction submitted: ");
+    Serial.print("Transaction submitted: ");
     Serial.println(txHash.c_str());
     
     return true;

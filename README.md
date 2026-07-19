@@ -4,6 +4,8 @@ AploEmbed is an Arduino library for using AploCoin from embedded devices.
 
 It provides RPC helpers, transaction signing, APLO/Gaplo conversion, staking helpers, and mining contract helpers for AploCoin chain ID `28282`.
 
+Mining rewards are accounted in Gaplo, the base unit of APLO. Staking locks APLO in the staking contract and changes the multiplier used by the mining contract.
+
 ## Supported boards
 
 - ESP32
@@ -126,6 +128,8 @@ std::string AploUnstake(const std::string* stakingContract, const char* privateK
 ```
 
 ### Mining
+
+Mining submits a `mine(bytes32)` contract transaction. A successful call earns a Gaplo reward. The reward multiplier comes from the amount of APLO staked by the miner.
 
 ```cpp
 bool AploGetMinerParams(

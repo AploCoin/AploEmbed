@@ -8,7 +8,7 @@ using std::string;
 
 static void beginSerial()
 {
-    beginSerial();
+    Serial.begin(115200);
 #if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
     unsigned long serialStart = millis();
     while (!Serial && millis() - serialStart < 3000) {

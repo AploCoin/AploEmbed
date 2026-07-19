@@ -2,33 +2,33 @@
 
 This example demonstrates how to interact with the AploCoin staking contract to:
 - Query current stake amount and mining reward multiplier
-- Stake APLO to increase mining rewards
+- Stake APLO to increase the Gaplo mining reward multiplier
 - Unstake APLO to retrieve locked funds
 
 ## Overview
 
-AploCoin uses a built-in staking contract at address `0x0000000000000000000000000000000000001235` that allows miners to lock APLO tokens to increase their mining reward multiplier.
+AploCoin uses a built-in staking contract at address `0x0000000000000000000000000000000000001235`. Miners lock APLO there to set the multiplier used by the mining contract. Successful mining rewards are accounted in Gaplo.
 
 ### Staking Tiers
 
 The staking system uses a tier-based multiplier system:
 
-| Staked Amount | Multiplier | Mining Rewards |
-|---------------|------------|----------------|
-| < 1,000 APLO  | 0×         | No rewards     |
-| 1,000-1,999 APLO | 1.0×    | Base rewards   |
-| 2,000-2,999 APLO | 1.1×    | +10% rewards   |
-| 3,000-3,999 APLO | 1.2×    | +20% rewards   |
-| 4,000-4,999 APLO | 1.3×    | +30% rewards   |
-| 5,000-5,999 APLO | 1.4×    | +40% rewards   |
-| 6,000-6,999 APLO | 1.5×    | +50% rewards   |
-| 7,000-7,999 APLO | 1.6×    | +60% rewards   |
-| 8,000+ APLO   | 1.7×       | +70% rewards (max) |
+| Staked APLO | Multiplier |
+|-------------|------------|
+| < 1,000     | 0x         |
+| 1,000-1,999 | 1.0x       |
+| 2,000-2,999 | 1.1x       |
+| 3,000-3,999 | 1.2x       |
+| 4,000-4,999 | 1.3x       |
+| 5,000-5,999 | 1.4x       |
+| 6,000-6,999 | 1.5x       |
+| 7,000-7,999 | 1.6x       |
+| 8,000+      | 1.7x       |
 
-**Important Notes:**
-- Minimum stake for rewards: **1,000 APLO**
+## Notes
+- Minimum stake for mining rewards: **1,000 APLO**
 - Staking is **cumulative** - calling `stake()` multiple times adds to your total
-- Unstaking returns **ALL** staked APLO and resets multiplier to 0
+- Unstaking returns **all** staked APLO and resets multiplier to 0
 - Staked APLO is locked in the contract until you unstake
 
 ## Hardware Requirements
@@ -56,7 +56,7 @@ const char *password = "<YOUR_WIFI_PASSWORD>";
 
 ### 2. Wallet Configuration
 
-**CRITICAL SECURITY STEP:**
+Set the wallet details before sending transactions:
 
 Set your actual wallet details before sending transactions:
 
@@ -65,14 +65,14 @@ Set your actual wallet details before sending transactions:
 const char *PRIVATE_KEY = "0000000000000000000000000000000000000000000000000000000000000000";
 ```
 
-**⚠️ SECURITY WARNING:**
-- NEVER commit your real private key to version control
+Security:
+- Never commit your real private key to version control
 - Keep your private key secret and secure
 - Consider using environment variables or secure storage for production
 
 ### 3. Staking Amount
 
-Adjust the stake amount (minimum 1,000 APLO for rewards):
+Adjust the stake amount. The minimum for Gaplo mining rewards is 1,000 APLO:
 
 ```cpp
 #define STAKE_AMOUNT_APLO 1000.0
@@ -115,8 +115,8 @@ pio device monitor
 ### Using Arduino IDE
 
 1. Open `main.cpp` in Arduino IDE
-2. Select your board: Tools → Board → ESP32 Dev Module
-3. Select the correct port: Tools → Port
+2. Select your board: Tools -> Board -> ESP32 Dev Module
+3. Select the correct port: Tools -> Port
 4. Click Upload
 5. Open Serial Monitor (115200 baud)
 
@@ -144,11 +144,11 @@ Current Balance: 5000.000000 APLO
 --- Querying Staking Status ---
 Address: 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb
 Current Stake: 0.000000000000000000 APLO
-Mining Multiplier: 0 (no rewards - stake below 1,000 APLO)
+Mining Multiplier: 0 (no Gaplo mining rewards - stake below 1,000 APLO)
 
 Tier Information:
   Below minimum stake (1,000 APLO)
-  No mining rewards
+  No Gaplo mining rewards
 
 Attempting to stake: 1000.00 APLO
 
@@ -165,7 +165,7 @@ Nonce: 5
 Transaction Parameters:
   From: 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb
   To (Contract): 0x0000000000000000000000000000000000001235
-  Value: 1000.00 APLO (sent WITH transaction)
+  Value: 0 APLO (stake amount is passed as stake(uint256) argument)
   Gas Price: 1 Gwei
   Gas Limit: 100000
   Nonce: 5
@@ -186,10 +186,10 @@ Use unstake() to retrieve your staked APLO.
 --- Querying Staking Status ---
 Address: 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb
 Current Stake: 1000.000000000000000000 APLO
-Mining Multiplier: 1.0× (10/10)
+Mining Multiplier: 1.0x (10/10)
 
 Tier Information:
-  Tier 1: 1,000-1,999 APLO → 1.0× multiplier
+  Tier 1: 1,000-1,999 APLO -> 1.0x multiplier
 ```
 
 ## API Reference
@@ -210,7 +210,7 @@ queryStakingStatus(MY_ADDRESS);
 ```
 
 #### `stakeAplo(amount)`
-Stakes APLO tokens in the staking contract to increase mining multiplier.
+Stakes APLO in the staking contract to increase the Gaplo mining reward multiplier.
 
 **Parameters:**
 - `amount` - Amount in APLO to stake (double)
@@ -218,9 +218,9 @@ Stakes APLO tokens in the staking contract to increase mining multiplier.
 **Returns:** void (prints transaction result to Serial)
 
 **Notes:**
-- Minimum 1,000 APLO required for mining rewards
+- Minimum 1,000 APLO required for Gaplo mining rewards
 - Staking is cumulative - multiple calls add to total stake
-- Requires sufficient balance for stake amount + gas fees
+- Requires sufficient balance for stake amount plus gas fees
 
 **Example:**
 ```cpp
@@ -228,7 +228,7 @@ stakeAplo(1000.0);  // Stake 1,000 APLO
 ```
 
 #### `unstakeAplo()`
-Unstakes ALL staked APLO and returns it to the caller's address.
+Unstakes all staked APLO and returns it to the caller's address.
 
 **Parameters:** None
 
@@ -237,7 +237,7 @@ Unstakes ALL staked APLO and returns it to the caller's address.
 **Notes:**
 - Returns **entire** stake, not partial amounts
 - Resets mining multiplier to 0
-- Must stake again to receive mining rewards
+- Must stake again to receive Gaplo mining rewards
 
 **Example:**
 ```cpp
@@ -269,24 +269,24 @@ Returns the mining reward multiplier for an address.
 - `contract` - Staking contract address (string*)
 - `address` - Wallet address to query (string*)
 
-**Returns:** `uint256_t` - Multiplier scaled by 10 (10 = 1.0×, 17 = 1.7×)
+**Returns:** `uint256_t` - Multiplier scaled by 10 (10 = 1.0x, 17 = 1.7x)
 
 **Example:**
 ```cpp
 string stakingContract = APLO_STAKING_CONTRACT;
 string addr = MY_ADDRESS;
 uint256_t multiplier = web3->AploGetStakeMultiplier(&stakingContract, &addr);
-// multiplier = 10 means 1.0×, 17 means 1.7×
+// multiplier = 10 means 1.0x, 17 means 1.7x
 ```
 
 ### Web3 Staking Methods
 
 #### `web3->AploStake(stakingContract, amount, privateKey, fromAddress)`
-Stakes APLO in the staking contract to increase mining multiplier.
+Stakes APLO in the staking contract to increase the Gaplo mining reward multiplier.
 
 **Parameters:**
 - `stakingContract` - Staking contract address (const string*)
-- `amount` - Amount to stake in Gaplo/wei (const uint256_t*)
+- `amount` - Amount to stake, converted to Gaplo for the stake(uint256) argument (const uint256_t*)
 - `privateKey` - 64-character hex private key (const char*)
 - `fromAddress` - Sender address (const string*)
 
@@ -301,7 +301,7 @@ string txHash = web3->AploStake(&stakingContract, &amount, PRIVATE_KEY, &myAddr)
 ```
 
 #### `web3->AploUnstake(stakingContract, privateKey, fromAddress)`
-Unstakes ALL staked APLO and resets mining multiplier to 0.
+Unstakes all staked APLO and resets mining multiplier to 0.
 
 **Parameters:**
 - `stakingContract` - Staking contract address (const string*)
@@ -317,7 +317,7 @@ string myAddr = MY_ADDRESS;
 string txHash = web3->AploUnstake(&stakingContract, PRIVATE_KEY, &myAddr);
 ```
 
-**Note:** Both methods automatically handle:
+Both methods handle:
 - Nonce retrieval via `EthGetTransactionCount()`
 - Gas price query via `EthGasPrice()`
 - Function encoding and ABI packing
@@ -334,10 +334,10 @@ AploCoin uses 18 decimal places:
 
 ```cpp
 // APLO to Gaplo (wei)
-uint256_t gaplo = Util::ConvertToWei(1000.0, 18);  // 1000 APLO → Gaplo
+uint256_t gaplo = Util::ConvertToWei(1000.0, 18);  // 1000 APLO -> Gaplo
 
 // Gaplo (wei) to APLO string
-string aplo = Util::ConvertWeiToEthString(&gaplo, 18);  // Gaplo → "1000.0"
+string aplo = Util::ConvertWeiToEthString(&gaplo, 18);  // Gaplo -> "1000.0"
 ```
 
 ## Troubleshooting
@@ -347,7 +347,7 @@ string aplo = Util::ConvertWeiToEthString(&gaplo, 18);  // Gaplo → "1000.0"
 **Symptom:** Transaction returns empty hash or "0x"
 
 **Possible Causes:**
-1. Insufficient balance for stake amount + gas fees
+1. Insufficient balance for stake amount plus gas fees
 2. Invalid private key
 3. Network connectivity issues
 4. RPC endpoint unavailable
@@ -362,7 +362,7 @@ string aplo = Util::ConvertWeiToEthString(&gaplo, 18);  // Gaplo → "1000.0"
 
 **Symptom:** Error message about insufficient balance
 
-**Cause:** Account balance is less than stake amount + gas buffer
+**Cause:** Account balance is less than stake amount plus gas buffer
 
 **Solution:**
 - Reduce `STAKE_AMOUNT_APLO`
@@ -435,11 +435,11 @@ To test cumulative staking (multiple stake calls):
 ```cpp
 // Stake 1,000 APLO
 stakeAplo(1000.0);
-queryStakingStatus(MY_ADDRESS);  // Shows 1,000 APLO, 1.0× multiplier
+queryStakingStatus(MY_ADDRESS);  // Shows 1,000 APLO, 1.0x multiplier
 
 // Stake another 1,000 APLO
 stakeAplo(1000.0);
-queryStakingStatus(MY_ADDRESS);  // Shows 2,000 APLO, 1.1× multiplier
+queryStakingStatus(MY_ADDRESS);  // Shows 2,000 APLO, 1.1x multiplier
 ```
 
 ### Periodic Status Monitoring
