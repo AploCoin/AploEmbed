@@ -29,6 +29,7 @@ class KeyID;
 #include <string.h>
 #include <string>
 #include "AploContracts.h"
+#include "AploCertificates.h"
 
 enum ConnectionStage
 {
@@ -65,8 +66,12 @@ public:
     // Option 2: Use specific CA certificate (PEM format)
     // Useful when you control the RPC endpoint and want to pin to a specific CA
     void setCertificate(const char* root_ca);
-    
-    // Option 3: Explicitly disable certificate validation (insecure, for testing only)
+
+    // Option 3: Automatically pick the bundled root CA for known/common public RPC CAs.
+    // Defaults to ISRG Root X1, which validates Let's Encrypt endpoints.
+    void setAutoCertificate();
+
+    // Option 4: Explicitly disable certificate validation (insecure, for testing only)
     // This is never enabled automatically.
     void setInsecure();
     
@@ -142,11 +147,12 @@ private:
     long long chainId;  // Fixed to APLO_ID (28282)
     
     // Certificate configuration state
-    enum CertMode { CERT_AUTO, CERT_INSECURE, CERT_CA, CERT_BUNDLE };
+    enum CertMode { CERT_AUTO_RESOLVE, CERT_AUTO, CERT_BUNDLE, CERT_CA, CERT_INSECURE };
     CertMode certMode;
     const char* caCert;
     const uint8_t* certBundle;
     size_t certBundleSize;
+    const char* resolvedAutoCert;
 };
 
 #endif //APLOEMBED_WEB3_H
