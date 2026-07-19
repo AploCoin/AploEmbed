@@ -315,10 +315,9 @@ string Web3::exec(const string* data) {
         Serial.print("Unable to connect to Host: ");
         Serial.println(host);
         delay(100);
-#if defined(ESP8266) || defined(ESP32)
-        // trigger a reset of supported Espressif Arduino devices
-        ESP.restart();
-#endif
+        // Do not reboot on RPC connection failure. Examples use failover and
+        // application-level retries; restarting here can trap boards in a boot
+        // loop before WiFi/RPC diagnostics are visible.
         return "";
     }
 
@@ -348,6 +347,7 @@ string Web3::exec(const string* data) {
         if (line == "\r") {
             break;
         }
+        delay(0);
     }
 
     // Read the complete response body. On ESP32 the body often arrives after

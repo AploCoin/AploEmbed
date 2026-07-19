@@ -6,7 +6,7 @@ Mining and staking use different units:
 
 - mining rewards are accounted in Gaplo, the base unit of APLO
 - staking locks APLO in the staking contract
-- the staked APLO amount controls the mining reward multiplier
+- staking is only the level gate/multiplier; the base reward amount is calculated from gas spent
 
 ```text
 1 APLO = 10^18 Gaplo
@@ -20,7 +20,7 @@ Mining and staking use different units:
 4. Generate a random 32-byte mining nonce.
 5. Hash the nonce with the current miner parameters.
 6. If the hash is below the current difficulty, submit `mine(bytes32)`.
-7. If the transaction succeeds, the mining contract applies the Gaplo reward using the miner's staking multiplier.
+7. If the transaction succeeds, AploNode calculates the base Gaplo reward from gas spent, then applies the staking multiplier.
 
 The `mine(bytes32)` call is a normal contract transaction. The wallet still needs APLO for gas.
 
@@ -40,7 +40,7 @@ A wallet needs at least 1,000 APLO staked to receive Gaplo mining rewards.
 | 7,000-7,999 | 1.6x       |
 | 8,000+      | 1.7x       |
 
-The reward itself is still a Gaplo-denominated reward. The multiplier only changes how much the mining contract credits for a successful mine.
+The base reward is not calculated from the staked amount. In `core/state_transition.go`, AploNode computes `gaploUsed = gasUsed * min(gasPrice, baseFee)`, `baseReward = gaploUsed / GAploRewardCoef`, then scales by the staking multiplier (`mult / 10`). Stake is therefore a level gate/multiplier only.
 
 ## Configuration
 

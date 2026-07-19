@@ -9,13 +9,7 @@ using std::string;
 static void beginSerial()
 {
     Serial.begin(115200);
-#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
-    unsigned long serialStart = millis();
-    while (!Serial && millis() - serialStart < 3000) {
-        delay(10);
-    }
-#endif
-    delay(300);
+    delay(1000);
 }
 
 // WiFi credentials - replace with your network details

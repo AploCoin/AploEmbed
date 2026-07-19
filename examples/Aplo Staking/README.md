@@ -2,12 +2,12 @@
 
 This example demonstrates how to interact with the AploCoin staking contract to:
 - Query current stake amount and mining reward multiplier
-- Stake APLO to increase the Gaplo mining reward multiplier
+- Stake APLO to set the Gaplo mining reward level/multiplier
 - Unstake APLO to retrieve locked funds
 
 ## Overview
 
-AploCoin uses a built-in staking contract at address `0x0000000000000000000000000000000000001235`. Miners lock APLO there to set the multiplier used by the mining contract. Successful mining rewards are accounted in Gaplo.
+AploCoin uses a built-in staking contract at address `0x0000000000000000000000000000000000001235`. Miners lock APLO there to set the multiplier used by the mining reward logic. The base reward is calculated from gas spent; stake only gates/scales it. Successful mining rewards are accounted in Gaplo.
 
 ### Staking Tiers
 
@@ -178,7 +178,7 @@ SUCCESS! Staking transaction sent.
 Transaction Hash: 0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890
 
 Your APLO is now staked in the contract.
-Mining multiplier will be updated based on total stake.
+Mining multiplier tier will be updated based on total stake; base reward still comes from gas spent.
 Use unstake() to retrieve your staked APLO.
 
 === Updated Staking Status ===
@@ -210,7 +210,7 @@ queryStakingStatus(MY_ADDRESS);
 ```
 
 #### `stakeAplo(amount)`
-Stakes APLO in the staking contract to increase the Gaplo mining reward multiplier.
+Stakes APLO in the staking contract to set the Gaplo mining reward level/multiplier.
 
 **Parameters:**
 - `amount` - Amount in APLO to stake (double)
@@ -282,7 +282,7 @@ uint256_t multiplier = web3->AploGetStakeMultiplier(&stakingContract, &addr);
 ### Web3 Staking Methods
 
 #### `web3->AploStake(stakingContract, amount, privateKey, fromAddress)`
-Stakes APLO in the staking contract to increase the Gaplo mining reward multiplier.
+Stakes APLO in the staking contract to set the Gaplo mining reward level/multiplier.
 
 **Parameters:**
 - `stakingContract` - Staking contract address (const string*)

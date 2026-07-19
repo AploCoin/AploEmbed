@@ -9,13 +9,7 @@ using std::string;
 static void beginSerial()
 {
     Serial.begin(115200);
-#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
-    unsigned long serialStart = millis();
-    while (!Serial && millis() - serialStart < 3000) {
-        delay(10);
-    }
-#endif
-    delay(300);
+    delay(1000);
 }
 
 // ============================================================================
@@ -28,22 +22,23 @@ static void beginSerial()
 // 4. Mining difficulty adjusts dynamically based on network conditions
 // 5. Block reward cooldown: 20 blocks between successful mines per address
 // 6. Test with small amounts and monitor gas costs first
-// 7. Higher stake = higher mining multiplier (up to 1.7x at 8,000+ APLO)
+// 7. Stake only sets the reward level/multiplier; base reward comes from gas spent
 //
 // Mining Process:
 //   1. Query miner_params(address) to get current difficulty and prev_hash
 //   2. Generate random nonce and hash it with miner params
 //   3. If hash < difficulty, submit mine(nonce) transaction
 //   4. Wait for 20+ blocks before next mine attempt
-//   5. Rewards are multiplied by staking tier (0x to 1.7x)
+//   5. Base reward is calculated from gas spent, then scaled by staking tier
 //
-// Staking Tier Table (from AploNode builtin/aplo/aplo.go):
-//   < 1,000 APLO → multiplier 0   (no mining reward)
-//   ≥ 1,000 APLO → multiplier 1.0x (10/10)
-//   ≥ 2,000 APLO → multiplier 1.1x (11/10)
-//   ≥ 3,000 APLO → multiplier 1.2x (12/10)
-//   ...
-//   ≥ 8,000 APLO → multiplier 1.7x (17/10, maximum)
+// Reward logic (AploNode core/state_transition.go):
+//   gaploUsed   = gasUsed * min(gasPrice, baseFee)
+//   baseReward  = gaploUsed / GAploRewardCoef
+//   finalReward = baseReward * stakingMultiplier / 10
+//   if sender is not coinbase, gaploUsed is added back to the reward
+//
+// Staking tier table: <1,000 APLO => 0x, 1,000+ => 1.0x,
+// then +0.1x per extra 1,000 APLO up to 1.7x at 8,000+ APLO.
 //
 // ============================================================================
 
@@ -224,17 +219,17 @@ void queryStakingStatus(const char *address)
     // Determine tier and display status
     if (stakeAmount < 1000.0) {
         Serial.println("\nWARNING: Stake is below 1,000 APLO");
-        Serial.println("Mining will not earn Gaplo rewards at 0x multiplier.");
-        Serial.println("Please stake at least 1,000 APLO to receive Gaplo mining rewards.");
+        Serial.println("Mining reward is gated off at 0x multiplier.");
+        Serial.println("Stake at least 1,000 APLO to unlock the gas-based reward level.");
         Serial.println("See 'Aplo Staking' example for staking instructions.\n");
     } else if (stakeAmount < 2000.0) {
-        Serial.println("\nTier 1: Eligible for Gaplo mining rewards at 1.0x multiplier");
+        Serial.println("\nTier 1: gas-based mining reward at 1.0x multiplier");
         Serial.println("Stake 2,000+ APLO to increase multiplier to 1.1x\n");
     } else if (stakeAmount < 8000.0) {
         uint32_t tier = (uint32_t)(stakeAmount / 1000.0);
         Serial.print("\nTier ");
         Serial.print(tier);
-        Serial.print(": Gaplo mining rewards at ");
+        Serial.print(": gas-based mining reward at ");
         Serial.print(multiplier, 1);
         Serial.println("x multiplier");
         
@@ -248,7 +243,7 @@ void queryStakingStatus(const char *address)
             Serial.println("x\n");
         }
     } else {
-        Serial.println("\nMAX TIER: Gaplo mining rewards at 1.7x multiplier (maximum)");
+        Serial.println("\nMAX TIER: gas-based mining reward at 1.7x multiplier (maximum)");
         Serial.println("You have reached the highest staking tier!\n");
     }
 }
