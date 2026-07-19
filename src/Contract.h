@@ -55,6 +55,7 @@ private:
     std::string GenerateBytesForBytes(const char* value, const int len);
     std::string GenerateBytesForUIntArray(const std::vector<uint32_t> *v);
     std::string GenerateBytesForHexBytes(const std::string *value);
+    std::string GenerateBytesForFixedBytes(const std::string *value, size_t byteSize);
     std::string GenerateBytesForStruct(const std::string *value);
 
     void GenerateSignature(uint8_t* signature, int* recid, uint32_t nonceVal, unsigned long long gasPriceVal, uint32_t  gasLimitVal,

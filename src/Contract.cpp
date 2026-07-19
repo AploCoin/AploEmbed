@@ -40,6 +40,21 @@ static bool isSizedUintType(const string& type, unsigned *bits)
     return true;
 }
 
+static bool isFixedBytesType(const string& type, unsigned *bytes)
+{
+    if (type.rfind("bytes", 0) != 0 || type == "bytes" || type.find("[]") != string::npos) {
+        return false;
+    }
+    const char *digits = type.c_str() + 5;
+    char *end = nullptr;
+    unsigned long parsed = strtoul(digits, &end, 10);
+    if (end == digits || *end != '\0' || parsed == 0 || parsed > 32) {
+        return false;
+    }
+    *bytes = static_cast<unsigned>(parsed);
+    return true;
+}
+
 /**
  * Public functions
  * */
@@ -116,7 +131,16 @@ string Contract::SetupContractData(const char* func, ...)
             isDynamic.push_back(false);
             dynamicStartPointer += 0x20;
         }
-        else if (strncmp(params[i].c_str(), "int", sizeof("int")) == 0 || strncmp(params[i].c_str(), "bool", sizeof("bool")) == 0)
+        else {
+            unsigned fixedBytes = 0;
+            if (isFixedBytesType(params[i], &fixedBytes))
+            {
+                string output = GenerateBytesForFixedBytes(va_arg(args, string *), fixedBytes);
+                abiBlocks.push_back(output);
+                isDynamic.push_back(false);
+                dynamicStartPointer += 0x20;
+            }
+            else if (strncmp(params[i].c_str(), "int", sizeof("int")) == 0 || strncmp(params[i].c_str(), "bool", sizeof("bool")) == 0)
         {
             string output = GenerateBytesForInt(va_arg(args, int32_t));
             abiBlocks.push_back(output);
@@ -150,6 +174,7 @@ string Contract::SetupContractData(const char* func, ...)
             abiBlocks.push_back(output);
             isDynamic.push_back(true);
             dynamicStartPointer += 0x20;
+        }
         }
     }
     va_end(args);
@@ -340,6 +365,23 @@ string Contract::GenerateBytesForHexBytes(const string *value)
     cleaned = lengthDesignator + cleaned;
     size_t digits = cleaned.length() % 64;
     return cleaned + (digits > 0 ? string(64 - digits, '0') : "");
+}
+
+string Contract::GenerateBytesForFixedBytes(const string *value, size_t byteSize)
+{
+    string cleaned = *value;
+    if (cleaned.length() >= 2 && cleaned.at(0) == '0' &&
+        (cleaned.at(1) == 'x' || cleaned.at(1) == 'X')) {
+        cleaned = cleaned.substr(2);
+    }
+    size_t maxHexDigits = byteSize * 2;
+    if (cleaned.length() > maxHexDigits) {
+        cleaned = cleaned.substr(0, maxHexDigits);
+    }
+    while (cleaned.length() < maxHexDigits) {
+        cleaned += "0";
+    }
+    return cleaned + string(64 - cleaned.length(), '0');
 }
 
 string Contract::GenerateBytesForStruct(const string *value)
