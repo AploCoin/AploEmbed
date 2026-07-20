@@ -749,16 +749,3 @@ uint128_t & operator%=(uint128_t & lhs, const uint256_t & rhs){
     lhs = (uint256_t(lhs) % rhs).lower();
     return lhs;
 }
-
-std::ostream & operator<<(std::ostream & stream, const uint256_t & rhs){
-    if (stream.flags() & stream.oct){
-        stream << rhs.str(8);
-    }
-    else if (stream.flags() & stream.dec){
-        stream << rhs.str(10);
-    }
-    else if (stream.flags() & stream.hex){
-        stream << rhs.str(16);
-    }
-    return stream;
-}
