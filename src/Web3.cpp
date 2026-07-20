@@ -288,8 +288,8 @@ string Web3::exec(const string* data) {
     }
 
     // Make a HTTP request:
-    char contentLength[16];
-    snprintf(contentLength, sizeof(contentLength), "%u", static_cast<unsigned>(data->size()));
+    char contentLength[24];
+    snprintf(contentLength, sizeof(contentLength), "%lu", static_cast<unsigned long>(data->size()));
 
     string strPost = "POST " + string(path) + " HTTP/1.1";
     string strHost = "Host: " + string(host);

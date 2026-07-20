@@ -738,15 +738,15 @@ string Util::ConvertEthToWei(double eth)
 
 string Util::toString(int value)
 {
-    char buffer[16];
+    char buffer[24];
     snprintf(buffer, sizeof(buffer), "%d", value);
     return string(buffer);
 }
 
 string Util::intToHex(int value)
 {
-  char buffer[16];
-  snprintf(buffer, sizeof(buffer), "%x", value);
+  char buffer[24];
+  snprintf(buffer, sizeof(buffer), "%x", static_cast<unsigned int>(value));
   return string(buffer);
 }
 
