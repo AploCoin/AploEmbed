@@ -738,16 +738,16 @@ string Util::ConvertEthToWei(double eth)
 
 string Util::toString(int value)
 {
-    std::ostringstream oss;
-    oss << value;
-    return oss.str();
+    char buffer[24];
+    snprintf(buffer, sizeof(buffer), "%d", value);
+    return string(buffer);
 }
 
 string Util::intToHex(int value)
 {
-  std::stringstream stream;
-  stream << std::hex << value;
-  return stream.str();
+  char buffer[24];
+  snprintf(buffer, sizeof(buffer), "%x", static_cast<unsigned int>(value));
+  return string(buffer);
 }
 
 // -------------------------------

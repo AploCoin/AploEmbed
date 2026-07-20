@@ -11,7 +11,6 @@
 #include <stdint.h>
 #include <vector>
 #include <string>
-#include <sstream>
 #include "uint256/uint256_t.h"
 
 class Util {

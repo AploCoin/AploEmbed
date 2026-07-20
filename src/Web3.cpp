@@ -9,15 +9,13 @@
 
 #include "Util.h"
 #include "TagReader/TagReader.h"
-#include <iostream>
-#include <sstream>
 #include <cctype>
 #include <cstdlib>
+#include <cstdio>
 #include "nodes.h"
 
 // Helper function to initialize Web3 instance
 using std::string;
-using std::stringstream;
 using std::vector;
 
 
@@ -290,14 +288,12 @@ string Web3::exec(const string* data) {
     }
 
     // Make a HTTP request:
-    int l = data->size();
-    stringstream ss;
-    ss << l;
-    string lstr = ss.str();
+    char contentLength[24];
+    snprintf(contentLength, sizeof(contentLength), "%lu", static_cast<unsigned long>(data->size()));
 
     string strPost = "POST " + string(path) + " HTTP/1.1";
     string strHost = "Host: " + string(host);
-    string strContentLen = "Content-Length: " + lstr;
+    string strContentLen = "Content-Length: " + string(contentLength);
 
     client->println(strPost.c_str());
     client->println(strHost.c_str());

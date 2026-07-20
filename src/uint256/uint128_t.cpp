@@ -519,16 +519,3 @@ uint128_t operator>>(const int32_t & lhs, const uint128_t & rhs){
 uint128_t operator>>(const int64_t & lhs, const uint128_t & rhs){
     return uint128_t(lhs) >> rhs;
 }
-
-std::ostream & operator<<(std::ostream & stream, const uint128_t & rhs){
-    if (stream.flags() & stream.oct){
-        stream << rhs.str(8);
-    }
-    else if (stream.flags() & stream.dec){
-        stream << rhs.str(10);
-    }
-    else if (stream.flags() & stream.hex){
-        stream << rhs.str(16);
-    }
-    return stream;
-}

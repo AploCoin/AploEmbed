@@ -32,8 +32,8 @@ to do a general rewrite of this class.
 #define __UINT256_T__
 
 #include <cstdint>
-#include <ostream>
 #include <stdexcept>
+#include <string>
 #include <type_traits>
 #include <utility>
 
@@ -579,5 +579,4 @@ T & operator%=(T & lhs, const uint256_t & rhs){
 }
 
 // IO Operator
-UINT256_T_EXTERN std::ostream & operator<<(std::ostream & stream, const uint256_t & rhs);
 #endif
