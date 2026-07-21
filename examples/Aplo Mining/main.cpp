@@ -61,8 +61,9 @@ string myAddress;
 #define CYCLE_DELAY_MS 1000          // Delay between hash cycles (ms)
 
 // WiFi reconnect parameters
-#define WIFI_CONNECT_TIMEOUT_MS 30000 // Initial setup waits longer so router auth/DHCP has time to settle
-#define WIFI_RECONNECT_TIMEOUT_MS 15000
+#define WIFI_CONNECT_ATTEMPTS 3
+#define WIFI_ATTEMPT_TIMEOUT_MS 12000
+#define WIFI_RECONNECT_ATTEMPTS 2
 #define WIFI_RETRY_DELAY_MS 5000
 
 Web3 *web3;
@@ -77,8 +78,9 @@ struct MinerParams {
     String prevHash;
 };
 
-bool setup_wifi(uint32_t timeoutMs = WIFI_CONNECT_TIMEOUT_MS);
+bool setup_wifi(uint8_t maxAttempts = WIFI_CONNECT_ATTEMPTS);
 bool ensureWiFiConnected();
+void resetWiFiRadio();
 void queryStakingStatus(const char *address);
 MinerParams getMinerParams(const char *address);
 bool attemptMining(const char *address);
@@ -157,7 +159,24 @@ void loop()
     delay(CYCLE_DELAY_MS);
 }
 
-bool setup_wifi(uint32_t timeoutMs)
+void resetWiFiRadio()
+{
+    WiFi.persistent(false);
+#if defined(ESP32)
+    WiFi.setSleep(false);        // modem sleep can make ESP32-C3 association flaky on some routers
+    WiFi.setAutoReconnect(true);
+    WiFi.disconnect(true, true); // reset STA state and forget any cached AP config
+#else
+    WiFi.setAutoReconnect(true);
+    WiFi.disconnect(true);
+#endif
+    WiFi.mode(WIFI_OFF);
+    delay(500);
+    WiFi.mode(WIFI_STA);
+    delay(200);
+}
+
+bool setup_wifi(uint8_t maxAttempts)
 {
     if (WiFi.status() == WL_CONNECTED) {
         return true;
@@ -166,32 +185,42 @@ bool setup_wifi(uint32_t timeoutMs)
     Serial.print("Connecting to WiFi: ");
     Serial.println(ssid);
 
-    WiFi.persistent(false);
-    WiFi.mode(WIFI_STA);
-    WiFi.disconnect(false);
-    delay(100);
-    WiFi.begin(ssid, password);
+    for (uint8_t attempt = 1; attempt <= maxAttempts; attempt++) {
+        Serial.print("WiFi attempt ");
+        Serial.print(attempt);
+        Serial.print("/");
+        Serial.println(maxAttempts);
 
-    const unsigned long startMs = millis();
-    wificounter = 0;
-    while (WiFi.status() != WL_CONNECTED && millis() - startMs < timeoutMs) {
-        delay(500);
-        Serial.print(".");
-        wificounter++;
-    }
+        resetWiFiRadio();
+        WiFi.begin(ssid, password);
 
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.print("\nWiFi connect timed out. status=");
+        const unsigned long startMs = millis();
+        wificounter = 0;
+        while (WiFi.status() != WL_CONNECTED && millis() - startMs < WIFI_ATTEMPT_TIMEOUT_MS) {
+            delay(500);
+            Serial.print(".");
+            wificounter++;
+        }
+
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.println("\nWiFi connected");
+            Serial.print("IP address: ");
+            Serial.println(WiFi.localIP());
+            Serial.println();
+            return true;
+        }
+
+        Serial.print("\nWiFi attempt failed. status=");
         Serial.println(WiFi.status());
-        Serial.println("Check SSID/password, 2.4 GHz network, router MAC filters, and signal strength.");
-        return false;
+        if (attempt < maxAttempts) {
+            Serial.println("Resetting WiFi radio and retrying...");
+            delay(1000);
+        }
     }
 
-    Serial.println("\nWiFi connected");
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
-    Serial.println();
-    return true;
+    Serial.println("WiFi connect failed after all attempts.");
+    Serial.println("Check SSID/password, 2.4 GHz network, router MAC filters, WPA mode, and signal strength.");
+    return false;
 }
 
 bool ensureWiFiConnected()
@@ -210,7 +239,7 @@ bool ensureWiFiConnected()
     Serial.println(WiFi.status());
     Serial.println("Pausing mining and reconnecting automatically...");
 
-    if (setup_wifi(WIFI_RECONNECT_TIMEOUT_MS)) {
+    if (setup_wifi(WIFI_RECONNECT_ATTEMPTS)) {
         Serial.println("WiFi reconnected; resuming mining.\n");
         lastWifiRetryMs = 0;
         return true;
