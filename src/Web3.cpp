@@ -39,6 +39,7 @@ void Web3::initWeb3(const char* primaryRpc, const char* fallbackRpc) {
     resolvedAutoCert = nullptr;
 #if defined(ESP8266)
     esp8266TrustAnchor = nullptr;
+    esp8266TlsBufferSize = 0;
 #endif
     
     selectHost();
@@ -276,12 +277,30 @@ string Web3::generateJson(const string* method, const string* params) {
 string Web3::exec(const string* data) {
     string result;
 
+#if defined(ESP8266)
+    if (esp8266TlsBufferSize == 0) {
+        if (WiFiClientSecure::probeMaxFragmentLength(host, port, 1024)) {
+            esp8266TlsBufferSize = 1024;
+        } else if (WiFiClientSecure::probeMaxFragmentLength(host, port, 512)) {
+            esp8266TlsBufferSize = 512;
+        } else {
+            esp8266TlsBufferSize = -1;
+        }
+    }
+
+    if (esp8266TlsBufferSize < 0) {
+        Serial.print("RPC host does not support ESP8266 TLS MFLN: ");
+        Serial.println(host);
+        return "";
+    }
+#endif
+
     client = new (mem) WiFiClientSecure();
 #if defined(ESP8266)
-    // ESP8266 has very little free DRAM in larger sketches. BearSSL defaults
-    // allocate large TLS buffers; JSON-RPC requests/responses fit safely in
-    // smaller buffers and avoid aborting in std::string/new after handshake.
-    client->setBufferSizes(512, 512);
+    // Use negotiated Maximum Fragment Length instead of a blind low-memory
+    // buffer. Certificate validation remains enabled; only TLS record size is
+    // reduced for ESP8266's small DRAM budget.
+    client->setBufferSizes(esp8266TlsBufferSize, esp8266TlsBufferSize);
 #endif
     setupCert();
 
@@ -573,6 +592,9 @@ void Web3::setupCert()
 
 void Web3::selectHost()
 {
+#if defined(ESP8266)
+    esp8266TlsBufferSize = 0;
+#endif
     std::string node = primaryRpcUrl;
 
     if (node.length() == 0)

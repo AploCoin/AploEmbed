@@ -78,12 +78,73 @@ void Contract::SetPrivateKey(const char *key) {
 
 string Contract::SetupContractData(const char* func, ...)
 {
+    if (func == nullptr) {
+        return string("");
+    }
+
+    size_t paramCount = 0;
+    bool fixedOnly = true;
+    char tmpScan[strlen(func) + 1];
+    memset(tmpScan, 0, sizeof(tmpScan));
+    strcpy(tmpScan, func);
+    strtok(tmpScan, "(");
+    char *scan = strtok(0, "(");
+    scan = (scan != nullptr) ? strtok(scan, ")") : nullptr;
+    scan = (scan != nullptr) ? strtok(scan, ",") : nullptr;
+    while (scan != nullptr) {
+        unsigned uintBits = 0;
+        unsigned fixedBytes = 0;
+        const bool isFixed =
+            (strstr(scan, "uint") != nullptr && strstr(scan, "[]") == nullptr && isSizedUintType(scan, &uintBits)) ||
+            isFixedBytesType(scan, &fixedBytes) ||
+            strncmp(scan, "int", 3) == 0 ||
+            strncmp(scan, "bool", 4) == 0 ||
+            strncmp(scan, "address", 7) == 0;
+        fixedOnly = fixedOnly && isFixed;
+        paramCount++;
+        scan = strtok(0, ",");
+    }
+
+    if (fixedOnly) {
+        string ret = GenerateContractBytes(func);
+        ret.reserve(10 + (paramCount * 64));
+
+        va_list args;
+        va_start(args, func);
+
+        char tmpFast[strlen(func) + 1];
+        memset(tmpFast, 0, sizeof(tmpFast));
+        strcpy(tmpFast, func);
+        strtok(tmpFast, "(");
+        char *p = strtok(0, "(");
+        p = (p != nullptr) ? strtok(p, ")") : nullptr;
+        p = (p != nullptr) ? strtok(p, ",") : nullptr;
+        while (p != nullptr) {
+            unsigned uintBits = 0;
+            unsigned fixedBytes = 0;
+            if (isSizedUintType(p, &uintBits)) {
+                ret += (uintBits == 256)
+                    ? GenerateBytesForUint(va_arg(args, uint256_t *))
+                    : GenerateBytesForUintPointer(va_arg(args, const void *), uintBits / 8);
+            } else if (isFixedBytesType(p, &fixedBytes)) {
+                ret += GenerateBytesForFixedBytes(va_arg(args, string *), fixedBytes);
+            } else if (strncmp(p, "int", 3) == 0 || strncmp(p, "bool", 4) == 0) {
+                ret += GenerateBytesForInt(va_arg(args, int32_t));
+            } else if (strncmp(p, "address", 7) == 0) {
+                ret += GenerateBytesForAddress(va_arg(args, string *));
+            }
+            p = strtok(0, ",");
+        }
+        va_end(args);
+        return ret;
+    }
+
     string ret = "";
 
     string contractBytes = GenerateContractBytes(func);
     ret = contractBytes;
 
-    size_t paramCount = 0;
+    paramCount = 0;
     vector<string> params;
     char *p;
     char tmp[strlen(func) + 1];
