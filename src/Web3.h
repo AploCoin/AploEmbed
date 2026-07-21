@@ -159,6 +159,7 @@ private:
     const char* resolvedAutoCert;
 #if defined(ESP8266)
     BearSSL::X509List* esp8266TrustAnchor;
+    int esp8266TlsBufferSize;
 #endif
 };
 
