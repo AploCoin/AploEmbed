@@ -127,9 +127,10 @@ uint32_t Util::RlpEncodeItem(uint8_t* output, const uint8_t* input, uint32_t inp
     }
 }
 
-vector<uint8_t> Util::RlpEncodeItemWithVector(const vector<uint8_t> input) {
+vector<uint8_t> Util::RlpEncodeItemWithVector(const vector<uint8_t>& input) {
     vector<uint8_t> output;
     uint16_t input_len = input.size();
+    output.reserve(input_len + 5);
 
     if (input_len==1 && input[0] == 0x00) {
         output.push_back(0x80);

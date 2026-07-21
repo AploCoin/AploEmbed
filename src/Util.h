@@ -21,7 +21,7 @@ public:
     static uint32_t        RlpEncodeWholeHeader(uint8_t *header_output, uint32_t total_len);
     static std::vector<uint8_t> RlpEncodeWholeHeaderWithVector(uint32_t total_len);
     static uint32_t        RlpEncodeItem(uint8_t* output, const uint8_t* input, uint32_t input_len);
-    static std::vector<uint8_t> RlpEncodeItemWithVector(const std::vector<uint8_t> input);
+    static std::vector<uint8_t> RlpEncodeItemWithVector(const std::vector<uint8_t>& input);
 
     static uint32_t        ConvertNumberToUintArray(uint8_t *str, uint32_t val);
     static std::vector<uint8_t> ConvertNumberToVector(uint32_t val);

@@ -20,10 +20,14 @@ using std::vector;
 
 #if defined(ESP8266)
 // ESP8266 BearSSL allocates a shared 6200-byte secondary stack from its client
-// constructor. Reserve it during static initialization, before setup(), WiFi,
-// JSON/ABI strings, or MFLN probing can fragment the heap. It has no dependency
-// on other application globals and remains alive for the firmware lifetime.
-static WiFiClientSecure esp8266Client;
+// constructor. The singleton is first constructed by initWeb3(); using a
+// function-local static avoids cross-translation-unit initialization order
+// hazards when applications create a global Web3 before setup().
+static WiFiClientSecure& getEsp8266Client()
+{
+    static WiFiClientSecure transport;
+    return transport;
+}
 #endif
 
 
@@ -34,7 +38,7 @@ static string getJsonResultValue(const string* json) {
 }
 void Web3::initWeb3(const char* primaryRpc, const char* fallbackRpc) {
 #if defined(ESP8266)
-    client = &esp8266Client;
+    client = &getEsp8266Client();
 #else
     client = nullptr;
 #endif
@@ -277,13 +281,18 @@ string Web3::EthCall(const string* from, const char* to, long gas, long gasPrice
 }
 
 string Web3::EthSendSignedTransaction(const string* data, const uint32_t dataLen) {
-    string m = "eth_sendRawTransaction";
-    string p = "[\"" + *data + "\"]";
-    string input = generateJson(&m, &p);
+    (void)dataLen;
+    if (data == nullptr || data->empty()) return "";
+    string input;
+    input.reserve(data->size() + 80);
+    input = "{\"jsonrpc\":\"2.0\",\"method\":\"eth_sendRawTransaction\",\"params\":[\"";
+    input += *data;
+    input += "\"],\"id\":0}";
 #if 0
     LOG(input);
 #endif
-    return execWithFailover(&input);
+    string output = execWithFailover(&input);
+    return getResult(&output);
 }
 
 // -------------------------------
@@ -329,7 +338,7 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
 
 #if defined(ESP8266)
     // Reuse the transport reserved before setup().
-    client = &esp8266Client;
+    client = &getEsp8266Client();
     client->setBufferSizes(endpoint.tlsBufferSize, endpoint.tlsBufferSize);
 #else
     WiFiClientSecure scopedClient;
@@ -340,6 +349,7 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
     if (!client->connect(host, endpoint.port)) {
         Serial.print("Unable to connect to Host: ");
         Serial.println(host);
+        client->stop();
         delay(100);
         client = nullptr;
         return "";

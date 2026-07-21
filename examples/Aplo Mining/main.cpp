@@ -93,6 +93,17 @@ bool mineNonce(const uint8_t address[20], const MinerParams &params,
 bool submitMineTransaction(const uint8_t nonce[32]);
 void queryBalances(const char *address);
 
+bool decodeAddress(const char *address, uint8_t output[20])
+{
+    if (address == nullptr || strlen(address) != 42 || address[0] != '0' ||
+        (address[1] != 'x' && address[1] != 'X')) return false;
+    for (size_t i = 2; i < 42; ++i) {
+        if (!isxdigit(static_cast<unsigned char>(address[i]))) return false;
+    }
+    Util::ConvertHexToBytes(output, address, 20);
+    return true;
+}
+
 void setup()
 {
     beginSerial();
@@ -379,7 +390,10 @@ bool attemptMining(const char *address)
     Serial.println("Cooldown complete, attempting to mine...");
 
     uint8_t addressBytes[20];
-    Util::ConvertHexToBytes(addressBytes, address, sizeof(addressBytes));
+    if (!decodeAddress(address, addressBytes)) {
+        Serial.println("Mining paused: invalid derived wallet address.");
+        return false;
+    }
 
     // Fixed-size hot loop: no Arduino String, std::string, vector, or random()
     // allocations. Nonces come from the platform hardware CSPRNG.
