@@ -18,6 +18,14 @@
 using std::string;
 using std::vector;
 
+#if defined(ESP8266)
+// ESP8266 BearSSL allocates a shared 6200-byte secondary stack from its client
+// constructor. Reserve it during static initialization, before setup(), WiFi,
+// JSON/ABI strings, or MFLN probing can fragment the heap. It has no dependency
+// on other application globals and remains alive for the firmware lifetime.
+static WiFiClientSecure esp8266Client;
+#endif
+
 
 static string getJsonResultValue(const string* json) {
     if (json == nullptr) return string("");
@@ -25,7 +33,11 @@ static string getJsonResultValue(const string* json) {
     return reader.getTag(json, "result");
 }
 void Web3::initWeb3(const char* primaryRpc, const char* fallbackRpc) {
+#if defined(ESP8266)
+    client = &esp8266Client;
+#else
     client = nullptr;
+#endif
     host = nullptr;
     chainId = APLO_ID;  // Fixed to AploCoin chain ID (28282)
 
@@ -38,7 +50,6 @@ void Web3::initWeb3(const char* primaryRpc, const char* fallbackRpc) {
 #if defined(ESP8266)
     esp8266TrustAnchor = nullptr;
     esp8266TrustAnchorCert = nullptr;
-    esp8266ResponseBuffer[0] = '\0';
 #endif
 
     parseEndpoint(primaryRpc, &primaryEndpoint);
@@ -213,7 +224,7 @@ uint256_t Web3::EthGetBalance(const string* address) {
 string Web3::EthViewCall(const string* data, const char* to)
 {
     string m = "eth_call";
-    string p = "[{\"data\":\"";;
+    string p = "[{\"data\":\"";
     p += data->c_str();
     p += "\",\"to\":\"";
     p += to;
@@ -290,6 +301,11 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
     host = endpoint.host.c_str();
 
 #if defined(ESP8266)
+    // Allocate the owning result buffer before MFLN/TLS activity. Its capacity
+    // is fixed for the request, so receiving the body performs no heap growth.
+    string result;
+    result.reserve(APLO_ESP8266_RPC_RESPONSE_MAX);
+
     if (endpoint.tlsBufferSize == 0) {
         if (WiFiClientSecure::probeMaxFragmentLength(host, endpoint.port, 1024)) {
             endpoint.tlsBufferSize = 1024;
@@ -306,107 +322,101 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
         return "";
     }
 
-    size_t responseLength = 0;
     bool responseOverflow = false;
-    esp8266ResponseBuffer[0] = '\0';
 #else
     string result;
 #endif
 
-    // The TLS client is scoped deliberately. ESP8266 receives into fixed
-    // storage and constructs std::string only after BearSSL releases its heap.
-    {
-        WiFiClientSecure scopedClient;
-        client = &scopedClient;
 #if defined(ESP8266)
-        client->setBufferSizes(endpoint.tlsBufferSize, endpoint.tlsBufferSize);
-#endif
-        setupCert();
-
-        if (!client->connect(host, endpoint.port)) {
-            Serial.print("Unable to connect to Host: ");
-            Serial.println(host);
-            delay(100);
-            client = nullptr;
-            return "";
-        }
-
-        char contentLength[24];
-        snprintf(contentLength, sizeof(contentLength), "%lu", static_cast<unsigned long>(data->size()));
-
-        client->print("POST ");
-        client->print(endpoint.path.c_str());
-        client->println(" HTTP/1.1");
-        client->print("Host: ");
-        client->println(host);
-        client->println("Content-Type: application/json");
-        client->println("Connection: close");
-        client->print("Content-Length: ");
-        client->println(contentLength);
-        client->println();
-        client->print(data->c_str());
-
-        // Consume headers without temporary Arduino String allocations.
-        bool headersComplete = false;
-        uint32_t headerState = 0;
-        unsigned headerBytes = 0;
-        unsigned long headerDeadline = millis() + 10000;
-        while ((client->connected() || client->available()) &&
-               headerBytes < 2048 && millis() < headerDeadline) {
-            if (!client->available()) {
-                delay(1);
-                continue;
-            }
-            const char current = static_cast<char>(client->read());
-            ++headerBytes;
-            headerState = ((headerState << 8) | static_cast<uint8_t>(current)) & 0xffffffffUL;
-            if (headerState == 0x0d0a0d0aUL) {
-                headersComplete = true;
-                break;
-            }
-        }
-
-        if (!headersComplete) {
-            Serial.println("Invalid or oversized HTTP response headers");
-            client->stop();
-            client = nullptr;
-            return "";
-        }
-
-        unsigned long deadline = millis() + 10000;
-        while (client->connected() || client->available()) {
-            while (client->available()) {
-                const char c = static_cast<char>(client->read());
-#if defined(ESP8266)
-                if (responseLength < APLO_ESP8266_RPC_RESPONSE_MAX) {
-                    esp8266ResponseBuffer[responseLength++] = c;
-                } else {
-                    responseOverflow = true;
-                }
+    // Reuse the transport reserved before setup().
+    client = &esp8266Client;
+    client->setBufferSizes(endpoint.tlsBufferSize, endpoint.tlsBufferSize);
 #else
-                result += c;
+    WiFiClientSecure scopedClient;
+    client = &scopedClient;
 #endif
-                deadline = millis() + 1000;
-            }
-            if (millis() > deadline) {
-                break;
-            }
+    setupCert();
+
+    if (!client->connect(host, endpoint.port)) {
+        Serial.print("Unable to connect to Host: ");
+        Serial.println(host);
+        delay(100);
+        client = nullptr;
+        return "";
+    }
+
+    char contentLength[24];
+    snprintf(contentLength, sizeof(contentLength), "%lu", static_cast<unsigned long>(data->size()));
+
+    client->print("POST ");
+    client->print(endpoint.path.c_str());
+    client->println(" HTTP/1.1");
+    client->print("Host: ");
+    client->println(host);
+    client->println("Content-Type: application/json");
+    client->println("Connection: close");
+    client->print("Content-Length: ");
+    client->println(contentLength);
+    client->println();
+    client->print(data->c_str());
+
+    // Consume headers without temporary Arduino String allocations.
+    bool headersComplete = false;
+    uint32_t headerState = 0;
+    unsigned headerBytes = 0;
+    unsigned long headerDeadline = millis() + 10000;
+    while ((client->connected() || client->available()) &&
+           headerBytes < 2048 && millis() < headerDeadline) {
+        if (!client->available()) {
             delay(1);
+            continue;
         }
+        const char current = static_cast<char>(client->read());
+        ++headerBytes;
+        headerState = ((headerState << 8) | static_cast<uint8_t>(current)) & 0xffffffffUL;
+        if (headerState == 0x0d0a0d0aUL) {
+            headersComplete = true;
+            break;
+        }
+    }
+
+    if (!headersComplete) {
+        Serial.println("Invalid or oversized HTTP response headers");
         client->stop();
         client = nullptr;
+        return "";
     }
+
+    unsigned long deadline = millis() + 10000;
+    while (client->connected() || client->available()) {
+        while (client->available()) {
+            const char c = static_cast<char>(client->read());
+#if defined(ESP8266)
+            if (result.size() < APLO_ESP8266_RPC_RESPONSE_MAX) {
+                result += c;
+            } else {
+                responseOverflow = true;
+            }
+#else
+            result += c;
+#endif
+            deadline = millis() + 1000;
+        }
+        if (millis() > deadline) {
+            break;
+        }
+        delay(1);
+    }
+    client->stop();
+    client = nullptr;
 
 #if defined(ESP8266)
     if (responseOverflow) {
         Serial.println("HTTP response exceeds ESP8266 buffer");
         return "";
     }
-    esp8266ResponseBuffer[responseLength] = '\0';
-    return string(esp8266ResponseBuffer, responseLength);
-#else
-    return result;
 #endif
+    return result;
 }
 
 static bool normalizeRpcHex(string *value)

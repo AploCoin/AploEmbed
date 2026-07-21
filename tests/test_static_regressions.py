@@ -65,10 +65,13 @@ class StaticRegressionTests(unittest.TestCase):
         header = read('src/Web3.h')
         web3 = read('src/Web3.cpp')
         self.assertIn('APLO_ESP8266_RPC_RESPONSE_MAX', header)
-        self.assertIn('esp8266ResponseBuffer', header)
+        self.assertIn('static WiFiClientSecure esp8266Client;', web3)
+        self.assertNotIn('esp8266ResponseBuffer', header)
+        self.assertIn('result.reserve(APLO_ESP8266_RPC_RESPONSE_MAX);', web3)
         self.assertIn('HTTP response exceeds ESP8266 buffer', web3)
-        self.assertIn('return string(esp8266ResponseBuffer, responseLength);', web3)
-        self.assertIn('#else\n                result += c;\n#endif', web3)
+        self.assertIn('client = &esp8266Client;', web3)
+        self.assertNotIn('WiFiClientSecure scopedClient;', web3.split('#if defined(ESP8266)', 1)[1].split('#else', 1)[0])
+        self.assertIn('#else\n            result += c;\n#endif', web3)
 
     def test_rpc_endpoint_state_is_owned_and_does_not_use_strdup(self):
         header = read('src/Web3.h')
@@ -119,14 +122,15 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('uintBits / 8', contract)
         self.assertIn('isFixedBytesType', contract)
         self.assertIn('GenerateBytesForFixedBytes', contract)
-        self.assertIn('esp_fill_random', keyid)
-        self.assertIn('os_get_random', keyid)
+        self.assertIn('Crypto::RandomBytes', keyid)
         self.assertNotIn('random_buffer(privateKeyBytes', keyid)
 
     def test_mining_hash_and_balance_regressions(self):
         util = read('src/Util.cpp')
         web3 = read('src/Web3.cpp')
         mining = read('examples/Aplo Mining/main.cpp')
+        crypto_header = read('src/Crypto.h')
+        crypto_impl = read('src/Crypto.cpp')
         self.assertIn('return ConvertBytesToHex(hash, 32);', util)
         self.assertNotIn('return "0x" + ConvertBytesToHex(hash, 32);', util)
         self.assertIn('stripHexPrefix(&h);', util)
@@ -136,6 +140,22 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('APLO Balance:', mining)
         self.assertIn('Gas Balance (GAPLO):', mining)
         self.assertIn('HASH_ATTEMPTS_PER_CYCLE 2000', mining)
+        self.assertIn('Web3 web3Instance;', mining)
+        self.assertIn('Web3 *web3 = &web3Instance;', mining)
+        self.assertNotIn('web3 = new Web3();', mining)
+        self.assertIn('static bool RandomBytes(uint8_t *buffer, size_t length);', crypto_header)
+        self.assertIn('bool Crypto::RandomBytes(uint8_t *buffer, size_t length)', crypto_impl)
+        self.assertIn('uint8_t packed[148];', mining)
+        self.assertIn('uint8_t nonce[32];', mining)
+        self.assertIn('uint8_t hash[32];', mining)
+        self.assertIn('Crypto::Keccak256(packed, sizeof(packed), hash);', mining)
+        self.assertIn('uint8_t totalMined[32];', mining)
+        self.assertIn('memcpy(packed + 116, params.totalMined, 32);', mining)
+        self.assertNotIn('(uint32_t)totalMined', mining)
+        hot_loop = mining[mining.index('bool attemptMining'):mining.index('bool submitMineTransaction')]
+        self.assertNotIn('String nonce', hot_loop)
+        self.assertNotIn('String hash', hot_loop)
+        self.assertNotIn('string packed', hot_loop)
 
     def test_examples_keep_only_default_esp32_platformio_env(self):
         for rel in [

@@ -182,7 +182,6 @@ private:
 #if defined(ESP8266)
     BearSSL::X509List* esp8266TrustAnchor;
     const char* esp8266TrustAnchorCert;
-    char esp8266ResponseBuffer[APLO_ESP8266_RPC_RESPONSE_MAX + 1];
 #endif
 };
 

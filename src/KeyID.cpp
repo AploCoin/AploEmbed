@@ -1,27 +1,6 @@
 #include <KeyID.h>
 #include "Util.h"
 
-#if defined(ESP32)
-#include <esp_system.h>
-#elif defined(ESP8266)
-extern "C" {
-#include <user_interface.h>
-}
-#endif
-
-static bool fillPrivateKeyRandom(uint8_t *buffer, size_t length)
-{
-#if defined(ESP32)
-  esp_fill_random(buffer, length);
-  return true;
-#elif defined(ESP8266)
-  return os_get_random(buffer, length);
-#else
-  (void)buffer;
-  (void)length;
-  return false;
-#endif
-}
 
 // If we already have a private key
 KeyID::KeyID(Web3* web3, const std::string& privateKey)
@@ -73,7 +52,7 @@ KeyID::KeyID(Web3* web3)
 
 void KeyID::generatePrivateKey(Web3* web3)
 {
-  if (!fillPrivateKeyRandom(privateKeyBytes, ETHERS_PRIVATEKEY_LENGTH))
+  if (!Crypto::RandomBytes(privateKeyBytes, ETHERS_PRIVATEKEY_LENGTH))
   {
     Serial.println("Warning: hardware CSPRNG unavailable; private key was not generated");
     recoveredKey = false;
