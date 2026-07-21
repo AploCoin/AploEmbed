@@ -170,6 +170,8 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertNotIn('(uint32_t)totalMined', mining)
         self.assertIn('bool decodeAddress(const char *address, uint8_t output[20])', mining)
         self.assertIn('if (!decodeAddress(address, addressBytes))', mining)
+        self.assertIn('Util::ConvertHexToBytes(output, address + 2, 20);', mining)
+        self.assertNotIn('Util::ConvertHexToBytes(output, address, 20);', mining)
         hot_loop = mining[mining.index('bool attemptMining'):mining.index('bool submitMineTransaction')]
         self.assertNotIn('String nonce', hot_loop)
         self.assertNotIn('String hash', hot_loop)

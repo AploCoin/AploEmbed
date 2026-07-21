@@ -100,7 +100,7 @@ bool decodeAddress(const char *address, uint8_t output[20])
     for (size_t i = 2; i < 42; ++i) {
         if (!isxdigit(static_cast<unsigned char>(address[i]))) return false;
     }
-    Util::ConvertHexToBytes(output, address, 20);
+    Util::ConvertHexToBytes(output, address + 2, 20);
     return true;
 }
 
