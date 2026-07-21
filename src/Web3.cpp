@@ -277,6 +277,12 @@ string Web3::exec(const string* data) {
     string result;
 
     client = new (mem) WiFiClientSecure();
+#if defined(ESP8266)
+    // ESP8266 has very little free DRAM in larger sketches. BearSSL defaults
+    // allocate large TLS buffers; JSON-RPC requests/responses fit safely in
+    // smaller buffers and avoid aborting in std::string/new after handshake.
+    client->setBufferSizes(512, 512);
+#endif
     setupCert();
 
     int connected = client->connect(host, port);
@@ -287,22 +293,24 @@ string Web3::exec(const string* data) {
         // Do not reboot on RPC connection failure. Examples use failover and
         // application-level retries; restarting here can trap boards in a boot
         // loop before WiFi/RPC diagnostics are visible.
+        client->~WiFiClientSecure();
         return "";
     }
 
-    // Make a HTTP request:
+    // Make a HTTP request without temporary std::string allocations; ESP8266
+    // can run with only a few KB of free heap after WiFi/BearSSL are active.
     char contentLength[24];
     snprintf(contentLength, sizeof(contentLength), "%lu", static_cast<unsigned long>(data->size()));
 
-    string strPost = "POST " + string(path) + " HTTP/1.1";
-    string strHost = "Host: " + string(host);
-    string strContentLen = "Content-Length: " + string(contentLength);
-
-    client->println(strPost.c_str());
-    client->println(strHost.c_str());
+    client->print("POST ");
+    client->print(path);
+    client->println(" HTTP/1.1");
+    client->print("Host: ");
+    client->println(host);
     client->println("Content-Type: application/json");
     client->println("Connection: close");
-    client->println(strContentLen.c_str());
+    client->print("Content-Length: ");
+    client->println(contentLength);
     client->println();
     // Keep Content-Length exact. println() appends CRLF beyond the declared body
     // length and some JSON-RPC servers wait/parse oddly on embedded clients.
