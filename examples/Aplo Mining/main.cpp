@@ -56,12 +56,18 @@ const char *PRIVATE_KEY = "00000000000000000000000000000000000000000000000000000
 string myAddress;
 
 // Mining parameters
-#define BLOCK_COOLDOWN 20          // Minimum blocks between mine attempts
+#define BLOCK_COOLDOWN 20            // Minimum blocks between mine attempts
 #define HASH_ATTEMPTS_PER_CYCLE 2000 // Nonces to try before checking block height (~8 expected hits at 0x00ff...)
-#define CYCLE_DELAY_MS 1000        // Delay between hash cycles (ms)
+#define CYCLE_DELAY_MS 1000          // Delay between hash cycles (ms)
+
+// WiFi reconnect parameters
+#define WIFI_CONNECT_TIMEOUT_MS 30000 // Initial setup waits longer so router auth/DHCP has time to settle
+#define WIFI_RECONNECT_TIMEOUT_MS 15000
+#define WIFI_RETRY_DELAY_MS 5000
 
 Web3 *web3;
 int wificounter = 0;
+unsigned long lastWifiRetryMs = 0;
 
 // Mining state
 struct MinerParams {
@@ -71,7 +77,8 @@ struct MinerParams {
     String prevHash;
 };
 
-void setup_wifi();
+bool setup_wifi(uint32_t timeoutMs = WIFI_CONNECT_TIMEOUT_MS);
+bool ensureWiFiConnected();
 void queryStakingStatus(const char *address);
 MinerParams getMinerParams(const char *address);
 bool attemptMining(const char *address);
@@ -86,7 +93,10 @@ void setup()
     beginSerial();
     Serial.println("\n\n=== AploEmbed Mining Example ===\n");
 
-    setup_wifi();
+    while (!setup_wifi()) {
+        Serial.println("WiFi unavailable during setup; retrying in 5 seconds...");
+        delay(WIFI_RETRY_DELAY_MS);
+    }
 
     // Initialize Web3 with default AploCoin RPC endpoints
     // Uses pub1.aplocoin.com as primary, pub2.aplocoin.com as fallback
@@ -127,6 +137,11 @@ void setup()
 
 void loop()
 {
+    if (!ensureWiFiConnected()) {
+        delay(CYCLE_DELAY_MS);
+        return;
+    }
+
     // Attempt mining cycle
     bool mined = attemptMining(myAddress.c_str());
 
@@ -142,39 +157,67 @@ void loop()
     delay(CYCLE_DELAY_MS);
 }
 
-void setup_wifi()
+bool setup_wifi(uint32_t timeoutMs)
 {
     if (WiFi.status() == WL_CONNECTED) {
-        return;
+        return true;
     }
 
     Serial.print("Connecting to WiFi: ");
     Serial.println(ssid);
 
-    if (WiFi.status() != WL_CONNECTED) {
-        WiFi.persistent(false);
-        WiFi.mode(WIFI_OFF);
-        WiFi.mode(WIFI_STA);
-        WiFi.begin(ssid, password);
-    }
+    WiFi.persistent(false);
+    WiFi.mode(WIFI_STA);
+    WiFi.disconnect(false);
+    delay(100);
+    WiFi.begin(ssid, password);
 
+    const unsigned long startMs = millis();
     wificounter = 0;
-    while (WiFi.status() != WL_CONNECTED && wificounter < 20) {
+    while (WiFi.status() != WL_CONNECTED && millis() - startMs < timeoutMs) {
         delay(500);
         Serial.print(".");
         wificounter++;
     }
 
-    if (wificounter >= 20) {
-        Serial.println("\nFailed to connect to WiFi!");
-        Serial.println("Please check your credentials and try again.");
-        while (1) { delay(1000); }
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.print("\nWiFi connect timed out. status=");
+        Serial.println(WiFi.status());
+        Serial.println("Check SSID/password, 2.4 GHz network, router MAC filters, and signal strength.");
+        return false;
     }
 
     Serial.println("\nWiFi connected");
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
     Serial.println();
+    return true;
+}
+
+bool ensureWiFiConnected()
+{
+    if (WiFi.status() == WL_CONNECTED) {
+        return true;
+    }
+
+    const unsigned long now = millis();
+    if (lastWifiRetryMs != 0 && now - lastWifiRetryMs < WIFI_RETRY_DELAY_MS) {
+        return false;
+    }
+    lastWifiRetryMs = now;
+
+    Serial.print("\nWiFi disconnected. status=");
+    Serial.println(WiFi.status());
+    Serial.println("Pausing mining and reconnecting automatically...");
+
+    if (setup_wifi(WIFI_RECONNECT_TIMEOUT_MS)) {
+        Serial.println("WiFi reconnected; resuming mining.\n");
+        lastWifiRetryMs = 0;
+        return true;
+    }
+
+    Serial.println("Reconnect failed; will retry automatically.\n");
+    return false;
 }
 
 void queryBalances(const char *address)
