@@ -11,6 +11,14 @@
 #include <vector>
 #include <string.h>
 
+#if defined(ESP32)
+#include <esp_system.h>
+#elif defined(ESP8266)
+extern "C" {
+#include <user_interface.h>
+}
+#endif
+
 #define SIGNATURE_LENGTH 64
 
 using std::string;
@@ -100,6 +108,21 @@ string Crypto::PrivateKeyToAddress(const char *privateKey)
     PrivateKeyToPublic(privateKeyBytes, publicKey);
     PublicKeyToAddress(publicKey, address);
     return Util::ConvertBytesToHex(address, ETHERS_ADDRESS_LENGTH);
+}
+
+bool Crypto::RandomBytes(uint8_t *buffer, size_t length)
+{
+    if (buffer == nullptr || length == 0) return false;
+#if defined(ESP32)
+    esp_fill_random(buffer, length);
+    return true;
+#elif defined(ESP8266)
+    return os_get_random(buffer, length) == 0;
+#else
+    (void)buffer;
+    (void)length;
+    return false;
+#endif
 }
 
 void Crypto::Keccak256(const uint8_t *data, uint16_t length, uint8_t *result)

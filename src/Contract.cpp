@@ -306,12 +306,16 @@ string Contract::SendTransaction(uint32_t nonceVal, unsigned long long gasPriceV
     GenerateSignature(signature, recid, nonceVal, gasPriceVal, gasLimitVal,
                       toStr, valueStr, dataStr);
 
-    vector<uint8_t> param = RlpEncodeForRawTransaction(nonceVal, gasPriceVal, gasLimitVal,
-                                                       toStr, valueStr, dataStr,
-                                                       signature, recid[0]);
-
-    string paramStr = Util::VectorToString(&param);
-    return web3->EthSendSignedTransaction(&paramStr, param.size());
+    string paramStr;
+    uint32_t paramSize = 0;
+    {
+        vector<uint8_t> param = RlpEncodeForRawTransaction(nonceVal, gasPriceVal, gasLimitVal,
+                                                           toStr, valueStr, dataStr,
+                                                           signature, recid[0]);
+        paramSize = param.size();
+        paramStr = Util::VectorToString(&param);
+    } // Release raw RLP bytes before building JSON and entering TLS.
+    return web3->EthSendSignedTransaction(&paramStr, paramSize);
 }
 
 string
@@ -348,15 +352,8 @@ void Contract::GenerateSignature(uint8_t *signature, int *recid, uint32_t nonceV
                                  string *toStr, uint256_t *valueStr, string *dataStr)
 {
     vector<uint8_t> encoded = RlpEncode(nonceVal, gasPriceVal, gasLimitVal, toStr, valueStr, dataStr);
-    // hash
-    string t = Util::VectorToString(&encoded);
-
     uint8_t hash[ETHERS_KECCAK256_LENGTH];
-    size_t encodedTxBytesLength = (t.length()-2)/2;
-    vector<uint8_t> bytes(encodedTxBytesLength);
-    Util::ConvertHexToBytes(bytes.data(), t.c_str(), encodedTxBytesLength);
-
-    Crypto::Keccak256(bytes.data(), encodedTxBytesLength, hash);
+    Crypto::Keccak256(encoded.data(), encoded.size(), hash);
 
     // sign
     Sign((uint8_t *)hash, signature, recid);
@@ -514,6 +511,10 @@ vector<uint8_t> Contract::RlpEncode(
         outputChainId.size() +
         outputZero.size() +
         outputZero.size());
+    encoded.reserve(encoded.size() + outputNonce.size() + outputGasPrice.size() +
+                    outputGasLimit.size() + outputTo.size() + outputValue.size() +
+                    outputData.size() + outputChainId.size() +
+                    outputZero.size() * 2);
 
     encoded.insert(encoded.end(), outputNonce.begin(), outputNonce.end());
     encoded.insert(encoded.end(), outputGasPrice.begin(), outputGasPrice.end());
@@ -542,11 +543,7 @@ vector<uint8_t> Contract::RlpEncodeForRawTransaction(
     string *toStr, uint256_t *val, string *dataStr, uint8_t *sig, uint8_t recid)
 {
 
-    vector<uint8_t> signature;
-    for (int i = 0; i < SIGNATURE_LENGTH; i++)
-    {
-        signature.push_back(sig[i]);
-    }
+
     vector<uint8_t> nonce = Util::ConvertNumberToVector(nonceVal);
     vector<uint8_t> gasPrice = Util::ConvertNumberToVector(gasPriceVal);
     vector<uint8_t> gasLimit = Util::ConvertNumberToVector(gasLimitVal);
@@ -561,10 +558,8 @@ vector<uint8_t> Contract::RlpEncodeForRawTransaction(
     vector<uint8_t> outputValue = Util::RlpEncodeItemWithVector(value);
     vector<uint8_t> outputData = Util::RlpEncodeItemWithVector(data);
 
-    vector<uint8_t> R;
-    R.insert(R.end(), signature.begin(), signature.begin()+(SIGNATURE_LENGTH/2));
-    vector<uint8_t> S;
-    S.insert(S.end(), signature.begin()+(SIGNATURE_LENGTH/2), signature.end());
+    vector<uint8_t> R(sig, sig + (SIGNATURE_LENGTH / 2));
+    vector<uint8_t> S(sig + (SIGNATURE_LENGTH / 2), sig + SIGNATURE_LENGTH);
     //V.push_back((uint8_t)(recid + web3->getChainId() * 2 + 35)); // according to EIP-155
     uint256_t vv = recid + (web3->getChainId() * 2) + 35; // EIP-155 ensure long chainIds work correctly
     vector<uint8_t> V = vv.export_bits_truncate(); //convert to bytes
@@ -581,6 +576,10 @@ vector<uint8_t> Contract::RlpEncodeForRawTransaction(
         outputR.size() +
         outputS.size() +
         outputV.size());
+    encoded.reserve(encoded.size() + outputNonce.size() + outputGasPrice.size() +
+                    outputGasLimit.size() + outputTo.size() + outputValue.size() +
+                    outputData.size() + outputV.size() + outputR.size() +
+                    outputS.size());
 
     encoded.insert(encoded.end(), outputNonce.begin(), outputNonce.end());
     encoded.insert(encoded.end(), outputGasPrice.begin(), outputGasPrice.end());

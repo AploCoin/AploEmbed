@@ -22,6 +22,7 @@ public:
     static void PrivateKeyToPublic(const uint8_t *privateKey, uint8_t *publicKey);
     static void PublicKeyToAddress(const uint8_t *publicKey, uint8_t *address);
     static std::string PrivateKeyToAddress(const char *privateKey);
+    static bool RandomBytes(uint8_t *buffer, size_t length);
     static void Keccak256(const uint8_t *data, uint16_t length, uint8_t *result);
     static std::string ECRecoverFromPersonalMessage(std::string *signature, std::string *message);
     static std::string ECRecoverFromHexMessage(std::string *signature, std::string *hex);

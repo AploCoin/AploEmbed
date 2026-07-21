@@ -66,16 +66,20 @@ string myAddress;
 #define WIFI_RECONNECT_ATTEMPTS 2
 #define WIFI_RETRY_DELAY_MS 5000
 
-Web3 *web3;
+// Construct before setup()/WiFi so ESP8266 BearSSL reserves its shared stack
+// thunk before the networking heap becomes fragmented.
+Web3 web3Instance;
+Web3 *web3 = &web3Instance;
 int wificounter = 0;
 unsigned long lastWifiRetryMs = 0;
 
 // Mining state
 struct MinerParams {
     uint32_t lastBlock;
-    String currentDifficulty;
-    uint32_t totalMined;
-    String prevHash;
+    uint8_t totalMined[32];
+    uint8_t currentDifficulty[32];
+    uint8_t prevHash[32];
+    bool valid;
 };
 
 bool setup_wifi(uint8_t maxAttempts = WIFI_CONNECT_ATTEMPTS);
@@ -84,11 +88,21 @@ void resetWiFiRadio();
 void queryStakingStatus(const char *address);
 MinerParams getMinerParams(const char *address);
 bool attemptMining(const char *address);
-String generateRandomNonce();
-String hashNonce(const String &nonce, const char *address, const String &difficulty,
-                 const String &prevHash, uint32_t totalMined);
-bool submitMineTransaction(const String &nonce);
+bool mineNonce(const uint8_t address[20], const MinerParams &params,
+               uint8_t nonce[32], uint8_t hash[32]);
+bool submitMineTransaction(const uint8_t nonce[32]);
 void queryBalances(const char *address);
+
+bool decodeAddress(const char *address, uint8_t output[20])
+{
+    if (address == nullptr || strlen(address) != 42 || address[0] != '0' ||
+        (address[1] != 'x' && address[1] != 'X')) return false;
+    for (size_t i = 2; i < 42; ++i) {
+        if (!isxdigit(static_cast<unsigned char>(address[i]))) return false;
+    }
+    Util::ConvertHexToBytes(output, address + 2, 20);
+    return true;
+}
 
 void setup()
 {
@@ -99,17 +113,6 @@ void setup()
         Serial.println("WiFi unavailable during setup; retrying in 5 seconds...");
         delay(WIFI_RETRY_DELAY_MS);
     }
-
-    // Initialize Web3 with default AploCoin RPC endpoints
-    // Uses pub1.aplocoin.com as primary, pub2.aplocoin.com as fallback
-    web3 = new Web3();
-    // Web3 auto-selects the bundled root CA for HTTPS RPC endpoints.
-
-    // Alternative: specify custom RPC endpoint
-    // web3 = new Web3("custom-rpc.aplocoin.com");
-
-    // Alternative: specify both primary and fallback
-    // web3 = new Web3("primary-rpc.aplocoin.com", "fallback-rpc.aplocoin.com");
 
     Serial.println("Web3 initialized with AploCoin RPC endpoints");
     Serial.println("Primary: pub1.aplocoin.com");
@@ -321,12 +324,10 @@ void queryStakingStatus(const char *address)
 
 MinerParams getMinerParams(const char *address)
 {
-    MinerParams params;
+    MinerParams params = {};
 
-    // Call miner_params(address) view function using Web3::AploGetMinerParams
     string addr = address;
     string miningContractAddr = APLO_MINING_CONTRACT;
-
     uint256_t lastBlock, currentDifficulty, totalMined, prevHash;
 
     bool success = web3->AploGetMinerParams(&miningContractAddr, &addr,
@@ -335,29 +336,27 @@ MinerParams getMinerParams(const char *address)
 
     if (success) {
         params.lastBlock = (uint32_t)lastBlock;
-        params.totalMined = (uint32_t)totalMined;
-
-        // Convert uint256_t to canonical 32-byte hex strings.
+        // Decode once before the hot loop. Mining uses fixed byte arrays and
+        // performs no String/std::string/vector allocation per nonce.
         string diffHex = "0x" + currentDifficulty.str(16, 64);
         string prevHashHex = "0x" + prevHash.str(16, 64);
-
-        params.currentDifficulty = String(diffHex.c_str());
-        params.prevHash = String(prevHashHex.c_str());
+        string totalMinedHex = "0x" + totalMined.str(16, 64);
+        Util::ConvertHexToBytes(params.currentDifficulty, diffHex.c_str(), 32);
+        Util::ConvertHexToBytes(params.prevHash, prevHashHex.c_str(), 32);
+        Util::ConvertHexToBytes(params.totalMined, totalMinedHex.c_str(), 32);
+        params.valid = true;
     } else {
         Serial.println("ERROR: failed to read miner_params(address) from RPC.");
-        params.lastBlock = 0;
-        params.currentDifficulty = "";
-        params.totalMined = 0;
-        params.prevHash = "";
+        params.valid = false;
     }
 
     Serial.println("Miner Parameters:");
     Serial.print("  Last Block: ");
     Serial.println(params.lastBlock);
     Serial.print("  Total Mined: ");
-    Serial.println(params.totalMined);
+    Serial.println(Util::ConvertBytesToHex(params.totalMined, 32).c_str());
     Serial.print("  Difficulty target: ");
-    Serial.println(params.currentDifficulty);
+    Serial.println(Util::ConvertBytesToHex(params.currentDifficulty, 32).c_str());
     Serial.println("  Note: lower target = harder mining; 0x00ff... is about 1 valid nonce per 256 random attempts.");
 
     return params;
@@ -365,14 +364,12 @@ MinerParams getMinerParams(const char *address)
 
 bool attemptMining(const char *address)
 {
-    // Get current miner parameters
     MinerParams params = getMinerParams(address);
-    if (params.currentDifficulty.length() == 0 || params.prevHash.length() == 0) {
+    if (!params.valid) {
         Serial.println("Mining paused: RPC/miner params unavailable. Retrying next cycle.\n");
         return false;
     }
 
-    // Get current block number
     int currentBlock = web3->EthBlockNumber();
     if (currentBlock <= 0) {
         Serial.println("Mining paused: current block unavailable from RPC. Retrying next cycle.\n");
@@ -382,7 +379,6 @@ bool attemptMining(const char *address)
     Serial.print("Current Block: ");
     Serial.println(currentBlock);
 
-    // Check block cooldown
     if (currentBlock - params.lastBlock < BLOCK_COOLDOWN) {
         uint32_t blocksRemaining = BLOCK_COOLDOWN - (currentBlock - params.lastBlock);
         Serial.print("Cooldown active: ");
@@ -393,77 +389,62 @@ bool attemptMining(const char *address)
 
     Serial.println("Cooldown complete, attempting to mine...");
 
-    // Try multiple nonces
+    uint8_t addressBytes[20];
+    if (!decodeAddress(address, addressBytes)) {
+        Serial.println("Mining paused: invalid derived wallet address.");
+        return false;
+    }
+
+    // Fixed-size hot loop: no Arduino String, std::string, vector, or random()
+    // allocations. Nonces come from the platform hardware CSPRNG.
     for (int i = 0; i < HASH_ATTEMPTS_PER_CYCLE; i++) {
-        String nonce = generateRandomNonce();
-        String hash = hashNonce(nonce, address, params.currentDifficulty,
-                               params.prevHash, params.totalMined);
+        uint8_t nonce[32];
+        uint8_t hash[32];
+        if (!mineNonce(addressBytes, params, nonce, hash)) {
+            Serial.println("Mining paused: hardware CSPRNG unavailable.");
+            return false;
+        }
 
-        // Compare hash with difficulty using proper uint256 comparison
-        string hashStr = hash.c_str();
-        string diffStr = params.currentDifficulty.c_str();
-
-        if (Util::CompareUint256(&hashStr, &diffStr)) {
-            // Found valid nonce!
+        if (memcmp(hash, params.currentDifficulty, 32) < 0) {
             Serial.println("\n\nVALID NONCE FOUND!");
             Serial.print("Nonce: ");
-            Serial.println(nonce);
+            Serial.println(Util::ConvertBytesToHex(nonce, 32).c_str());
             Serial.print("Hash: ");
-            Serial.println(hash);
+            Serial.println(Util::ConvertBytesToHex(hash, 32).c_str());
             Serial.print("Difficulty target: ");
-            Serial.println(params.currentDifficulty);
-
-            // Submit mining transaction
+            Serial.println(Util::ConvertBytesToHex(params.currentDifficulty, 32).c_str());
             return submitMineTransaction(nonce);
         }
 
-        if (i % 10 == 0) {
-            Serial.print(".");
-        }
+        if (i % 10 == 0) Serial.print(".");
+        if ((i & 0x3f) == 0) delay(0);
     }
 
     Serial.println("\nNo valid nonce found in this cycle.");
     return false;
 }
 
-String generateRandomNonce()
+bool mineNonce(const uint8_t address[20], const MinerParams &params,
+               uint8_t nonce[32], uint8_t hash[32])
 {
-    // Generate random 32-byte nonce (64 hex characters)
-    String nonce = "0x";
-    for (int i = 0; i < 64; i++) {
-        nonce += String(random(0, 16), HEX);
-    }
-    return nonce;
+    if (!Crypto::RandomBytes(nonce, sizeof(nonce[0]) * 32)) return false;
+
+    uint8_t packed[148];
+    memcpy(packed, address, 20);
+    memcpy(packed + 20, nonce, 32);
+    memcpy(packed + 52, params.currentDifficulty, 32);
+    memcpy(packed + 84, params.prevHash, 32);
+    memcpy(packed + 116, params.totalMined, 32);
+    Crypto::Keccak256(packed, sizeof(packed), hash);
+    return true;
 }
 
-String hashNonce(const String &nonce, const char *address, const String &difficulty,
-                 const String &prevHash, uint32_t totalMined)
-{
-    // Hash = keccak256(abi.encodePacked(address, nonce, difficulty, prevHash, totalMined))
-    // This matches the WebMiner implementation
-
-    string addr = address;
-    string nonceStr = nonce.c_str();
-    string diffStr = difficulty.c_str();
-    string prevHashStr = prevHash.c_str();
-
-    // Pack data according to Solidity abi.encodePacked
-    string packed = Util::PackMiningData(&addr, &nonceStr, &diffStr, &prevHashStr, totalMined);
-
-    // Compute keccak256 hash
-    string hash = Util::ComputeKeccak256(&packed);
-
-    return String(hash.c_str());
-}
-
-bool submitMineTransaction(const String &nonce)
+bool submitMineTransaction(const uint8_t nonce[32])
 {
     Serial.println("\nSubmitting mine transaction...");
 
-    // Call Web3::AploMine helper
-    // This handles nonce validation, function encoding, nonce retrieval, gas price, signing, and submission
     string miningContractAddr = APLO_MINING_CONTRACT;
-    string nonceStr = nonce.c_str();
+    string nonceStr = Util::ConvertBytesToHex(nonce, 32);
     string myAddr = myAddress;
     string txHash = web3->AploMine(&miningContractAddr, &nonceStr, PRIVATE_KEY, &myAddr);
 

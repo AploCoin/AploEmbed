@@ -45,9 +45,9 @@ Do not use `setCertificateBundle(...)` expecting ESP32 behavior on ESP8266.
 
 ESP8266 has limited RAM. To keep sketches reliable:
 
-- avoid large global `String` objects;
-- avoid retaining full JSON-RPC responses longer than needed;
-- avoid high-frequency mining loops with excessive serial output;
+- AploEmbed creates and reuses one ESP8266 BearSSL transport before `setup()`, so the core's shared TLS stack allocation happens before WiFi and application allocations can fragment the heap.
+- RPC responses are bounded and their storage is reserved before TLS activity; oversized responses fail cleanly instead of growing the heap during a handshake.
+- The mining example uses fixed byte arrays and the hardware CSPRNG in its nonce/hash loop. It does not allocate Arduino `String`, `std::string`, or vectors per hash attempt.
 - keep transaction signing paths short and avoid unnecessary copies;
 - prefer one RPC operation at a time.
 
