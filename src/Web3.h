@@ -157,6 +157,9 @@ private:
     const uint8_t* certBundle;
     size_t certBundleSize;
     const char* resolvedAutoCert;
+#if defined(ESP8266)
+    BearSSL::X509List* esp8266TrustAnchor;
+#endif
 };
 
 #endif //APLOEMBED_WEB3_H
