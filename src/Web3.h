@@ -31,6 +31,10 @@ class KeyID;
 #include "AploContracts.h"
 #include "AploCertificates.h"
 
+#if defined(ESP8266)
+#define APLO_ESP8266_RPC_RESPONSE_MAX 768
+#endif
+
 enum ConnectionStage
 {
     unconnected,
@@ -53,6 +57,10 @@ public:
     
     // Legacy constructor for backward compatibility (chainId ignored, always uses APLO_ID)
     Web3(long long chainId);
+    ~Web3();
+
+    Web3(const Web3&) = delete;
+    Web3& operator=(const Web3&) = delete;
     
     // Certificate validation configuration
     // Call one of these methods BEFORE making any RPC calls when your platform requires explicit trust anchors.
@@ -129,10 +137,27 @@ public:
     std::string getResult(const std::string* json);
 
 private:
-    std::string exec(const std::string* data);
+    struct RpcEndpoint {
+        std::string host;
+        std::string path;
+        unsigned short port;
+#if defined(ESP8266)
+        int tlsBufferSize;
+#endif
+        bool valid;
+
+        RpcEndpoint()
+            : path("/"), port(443)
+#if defined(ESP8266)
+            , tlsBufferSize(0)
+#endif
+            , valid(false) {}
+    };
+
+    std::string exec(const std::string* data, RpcEndpoint& endpoint);
     std::string execWithFailover(const std::string* data);  // RPC failover wrapper
     std::string generateJson(const std::string* method, const std::string* params);
-    void selectHost();
+    bool parseEndpoint(const char* url, RpcEndpoint* endpoint);
     void setupCert();
     void initWeb3(const char* primaryRpc, const char* fallbackRpc);
     
@@ -142,12 +167,9 @@ private:
 
 private:
     WiFiClientSecure *client;
-    BYTE *mem;
     const char* host;
-    const char* path;
-    const char* primaryRpcUrl;
-    const char* fallbackRpcUrl;
-    unsigned short port;
+    RpcEndpoint primaryEndpoint;
+    RpcEndpoint fallbackEndpoint;
     long long chainId;  // Fixed to APLO_ID (28282)
     
     // Certificate configuration state
@@ -159,7 +181,8 @@ private:
     const char* resolvedAutoCert;
 #if defined(ESP8266)
     BearSSL::X509List* esp8266TrustAnchor;
-    int esp8266TlsBufferSize;
+    const char* esp8266TrustAnchorCert;
+    char esp8266ResponseBuffer[APLO_ESP8266_RPC_RESPONSE_MAX + 1];
 #endif
 };
 

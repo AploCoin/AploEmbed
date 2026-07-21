@@ -67,11 +67,24 @@ Contract::Contract(Web3* _web3, const char* address) {
     strcpy(options.to,"");
     strcpy(options.gasPrice,"0");
     crypto = NULL;
+    ownsWeb3 = false;
 }
 
-Contract::Contract(long long networkId) : Contract(new Web3(networkId), "") {}
+Contract::Contract(long long networkId) : Contract(new Web3(networkId), "") {
+    ownsWeb3 = true;
+}
+
+Contract::~Contract() {
+    delete crypto;
+    crypto = nullptr;
+    if (ownsWeb3) {
+        delete web3;
+        web3 = nullptr;
+    }
+}
 
 void Contract::SetPrivateKey(const char *key) {
+    delete crypto;
     crypto = new Crypto(web3);
     crypto->SetPrivateKey(key);
 }
@@ -338,12 +351,12 @@ void Contract::GenerateSignature(uint8_t *signature, int *recid, uint32_t nonceV
     // hash
     string t = Util::VectorToString(&encoded);
 
-    uint8_t *hash = new uint8_t[ETHERS_KECCAK256_LENGTH];
+    uint8_t hash[ETHERS_KECCAK256_LENGTH];
     size_t encodedTxBytesLength = (t.length()-2)/2;
-    uint8_t *bytes = new uint8_t[encodedTxBytesLength];
-    Util::ConvertHexToBytes(bytes, t.c_str(), encodedTxBytesLength);
+    vector<uint8_t> bytes(encodedTxBytesLength);
+    Util::ConvertHexToBytes(bytes.data(), t.c_str(), encodedTxBytesLength);
 
-    Crypto::Keccak256((uint8_t*)bytes, encodedTxBytesLength, hash);
+    Crypto::Keccak256(bytes.data(), encodedTxBytesLength, hash);
 
     // sign
     Sign((uint8_t *)hash, signature, recid);
@@ -479,8 +492,8 @@ vector<uint8_t> Contract::RlpEncode(
     vector<uint8_t> data = Util::ConvertHexToVector(dataStr);
     vector<uint8_t> chainId = Util::ConvertNumberToVector(uint64_t(web3->getChainId()));
 
-    auto *zeroStr = new string("0");
-    vector<uint8_t> zero = Util::ConvertHexToVector(zeroStr);
+    string zeroStr = "0";
+    vector<uint8_t> zero = Util::ConvertHexToVector(&zeroStr);
     vector<uint8_t> outputNonce = Util::RlpEncodeItemWithVector(nonce);
     vector<uint8_t> outputGasPrice = Util::RlpEncodeItemWithVector(gasPrice);
     vector<uint8_t> outputGasLimit = Util::RlpEncodeItemWithVector(gasLimit);

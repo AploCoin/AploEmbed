@@ -25,13 +25,11 @@ static string getJsonResultValue(const string* json) {
     return reader.getTag(json, "result");
 }
 void Web3::initWeb3(const char* primaryRpc, const char* fallbackRpc) {
-    mem = new BYTE[sizeof(WiFiClientSecure)];
+    client = nullptr;
+    host = nullptr;
     chainId = APLO_ID;  // Fixed to AploCoin chain ID (28282)
-    primaryRpcUrl = primaryRpc;
-    fallbackRpcUrl = fallbackRpc;
-    
-    // Default: let WiFiClientSecure/HTTP stack handle TLS using its configured trust store.
-    // No AploCoin certificates are hardcoded and certificate validation is never disabled implicitly.
+
+    // Default: validate known public RPC hosts with the bundled root CA.
     certMode = CERT_AUTO_RESOLVE;
     caCert = nullptr;
     certBundle = nullptr;
@@ -39,10 +37,12 @@ void Web3::initWeb3(const char* primaryRpc, const char* fallbackRpc) {
     resolvedAutoCert = nullptr;
 #if defined(ESP8266)
     esp8266TrustAnchor = nullptr;
-    esp8266TlsBufferSize = 0;
+    esp8266TrustAnchorCert = nullptr;
+    esp8266ResponseBuffer[0] = '\0';
 #endif
-    
-    selectHost();
+
+    parseEndpoint(primaryRpc, &primaryEndpoint);
+    parseEndpoint(fallbackRpc, &fallbackEndpoint);
 }
 
 // Default constructor: uses default Aplo RPC endpoints
@@ -70,6 +70,14 @@ Web3::Web3(long long networkId) {
         Serial.println(networkId);
     }
     initWeb3(getAploPrimaryNode(), getAploFallbackNode());
+}
+
+Web3::~Web3() {
+#if defined(ESP8266)
+    delete esp8266TrustAnchor;
+    esp8266TrustAnchor = nullptr;
+    esp8266TrustAnchorCert = nullptr;
+#endif
 }
 
 // Certificate validation configuration methods
@@ -274,96 +282,131 @@ string Web3::generateJson(const string* method, const string* params) {
     return "{\"jsonrpc\":\"2.0\",\"method\":\"" + *method + "\",\"params\":" + *params + ",\"id\":0}";
 }
 
-string Web3::exec(const string* data) {
-    string result;
+string Web3::exec(const string* data, RpcEndpoint& endpoint) {
+    if (data == nullptr || !endpoint.valid) {
+        return "";
+    }
+
+    host = endpoint.host.c_str();
 
 #if defined(ESP8266)
-    if (esp8266TlsBufferSize == 0) {
-        if (WiFiClientSecure::probeMaxFragmentLength(host, port, 1024)) {
-            esp8266TlsBufferSize = 1024;
-        } else if (WiFiClientSecure::probeMaxFragmentLength(host, port, 512)) {
-            esp8266TlsBufferSize = 512;
+    if (endpoint.tlsBufferSize == 0) {
+        if (WiFiClientSecure::probeMaxFragmentLength(host, endpoint.port, 1024)) {
+            endpoint.tlsBufferSize = 1024;
+        } else if (WiFiClientSecure::probeMaxFragmentLength(host, endpoint.port, 512)) {
+            endpoint.tlsBufferSize = 512;
         } else {
-            esp8266TlsBufferSize = -1;
+            endpoint.tlsBufferSize = -1;
         }
     }
 
-    if (esp8266TlsBufferSize < 0) {
+    if (endpoint.tlsBufferSize < 0) {
         Serial.print("RPC host does not support ESP8266 TLS MFLN: ");
         Serial.println(host);
         return "";
     }
+
+    size_t responseLength = 0;
+    bool responseOverflow = false;
+    esp8266ResponseBuffer[0] = '\0';
+#else
+    string result;
 #endif
 
-    client = new (mem) WiFiClientSecure();
+    // The TLS client is scoped deliberately. ESP8266 receives into fixed
+    // storage and constructs std::string only after BearSSL releases its heap.
+    {
+        WiFiClientSecure scopedClient;
+        client = &scopedClient;
 #if defined(ESP8266)
-    // Use negotiated Maximum Fragment Length instead of a blind low-memory
-    // buffer. Certificate validation remains enabled; only TLS record size is
-    // reduced for ESP8266's small DRAM budget.
-    client->setBufferSizes(esp8266TlsBufferSize, esp8266TlsBufferSize);
+        client->setBufferSizes(endpoint.tlsBufferSize, endpoint.tlsBufferSize);
 #endif
-    setupCert();
+        setupCert();
 
-    int connected = client->connect(host, port);
-    if (!connected) {
-        Serial.print("Unable to connect to Host: ");
-        Serial.println(host);
-        delay(100);
-        // Do not reboot on RPC connection failure. Examples use failover and
-        // application-level retries; restarting here can trap boards in a boot
-        // loop before WiFi/RPC diagnostics are visible.
-        client->~WiFiClientSecure();
+        if (!client->connect(host, endpoint.port)) {
+            Serial.print("Unable to connect to Host: ");
+            Serial.println(host);
+            delay(100);
+            client = nullptr;
+            return "";
+        }
+
+        char contentLength[24];
+        snprintf(contentLength, sizeof(contentLength), "%lu", static_cast<unsigned long>(data->size()));
+
+        client->print("POST ");
+        client->print(endpoint.path.c_str());
+        client->println(" HTTP/1.1");
+        client->print("Host: ");
+        client->println(host);
+        client->println("Content-Type: application/json");
+        client->println("Connection: close");
+        client->print("Content-Length: ");
+        client->println(contentLength);
+        client->println();
+        client->print(data->c_str());
+
+        // Consume headers without temporary Arduino String allocations.
+        bool headersComplete = false;
+        uint32_t headerState = 0;
+        unsigned headerBytes = 0;
+        unsigned long headerDeadline = millis() + 10000;
+        while ((client->connected() || client->available()) &&
+               headerBytes < 2048 && millis() < headerDeadline) {
+            if (!client->available()) {
+                delay(1);
+                continue;
+            }
+            const char current = static_cast<char>(client->read());
+            ++headerBytes;
+            headerState = ((headerState << 8) | static_cast<uint8_t>(current)) & 0xffffffffUL;
+            if (headerState == 0x0d0a0d0aUL) {
+                headersComplete = true;
+                break;
+            }
+        }
+
+        if (!headersComplete) {
+            Serial.println("Invalid or oversized HTTP response headers");
+            client->stop();
+            client = nullptr;
+            return "";
+        }
+
+        unsigned long deadline = millis() + 10000;
+        while (client->connected() || client->available()) {
+            while (client->available()) {
+                const char c = static_cast<char>(client->read());
+#if defined(ESP8266)
+                if (responseLength < APLO_ESP8266_RPC_RESPONSE_MAX) {
+                    esp8266ResponseBuffer[responseLength++] = c;
+                } else {
+                    responseOverflow = true;
+                }
+#else
+                result += c;
+#endif
+                deadline = millis() + 1000;
+            }
+            if (millis() > deadline) {
+                break;
+            }
+            delay(1);
+        }
+        client->stop();
+        client = nullptr;
+    }
+
+#if defined(ESP8266)
+    if (responseOverflow) {
+        Serial.println("HTTP response exceeds ESP8266 buffer");
         return "";
     }
-
-    // Make a HTTP request without temporary std::string allocations; ESP8266
-    // can run with only a few KB of free heap after WiFi/BearSSL are active.
-    char contentLength[24];
-    snprintf(contentLength, sizeof(contentLength), "%lu", static_cast<unsigned long>(data->size()));
-
-    client->print("POST ");
-    client->print(path);
-    client->println(" HTTP/1.1");
-    client->print("Host: ");
-    client->println(host);
-    client->println("Content-Type: application/json");
-    client->println("Connection: close");
-    client->print("Content-Length: ");
-    client->println(contentLength);
-    client->println();
-    // Keep Content-Length exact. println() appends CRLF beyond the declared body
-    // length and some JSON-RPC servers wait/parse oddly on embedded clients.
-    client->print(data->c_str());
-
-    while (client->connected())
-    {
-        String line = client->readStringUntil('\n');
-        if (line == "\r") {
-            break;
-        }
-        delay(0);
-    }
-
-    // Read the complete response body. On ESP32 the body often arrives after
-    // headers, so checking available() only once races and returns empty/zero.
-    unsigned long deadline = millis() + 10000;
-    while (client->connected() || client->available()) {
-        while (client->available()) {
-            char c = client->read();
-            result += c;
-            deadline = millis() + 1000;
-        }
-        if (millis() > deadline) {
-            break;
-        }
-        delay(1);
-    }
-    client->flush();
-    client->stop();
-
-    client->~WiFiClientSecure();
-
+    esp8266ResponseBuffer[responseLength] = '\0';
+    return string(esp8266ResponseBuffer, responseLength);
+#else
     return result;
+#endif
 }
 
 static bool normalizeRpcHex(string *value)
@@ -547,8 +590,11 @@ void Web3::setupCert()
             // alive for the TLS connection duration.
             if (caCert != nullptr) {
 #if defined(ESP8266)
-                delete esp8266TrustAnchor;
-                esp8266TrustAnchor = new BearSSL::X509List(caCert);
+                if (esp8266TrustAnchor == nullptr || esp8266TrustAnchorCert != caCert) {
+                    delete esp8266TrustAnchor;
+                    esp8266TrustAnchor = new BearSSL::X509List(caCert);
+                    esp8266TrustAnchorCert = caCert;
+                }
                 client->setTrustAnchors(esp8266TrustAnchor);
 #elif defined(ESP32)
                 client->setCACert(caCert);
@@ -564,8 +610,11 @@ void Web3::setupCert()
             resolvedAutoCert = getAploRootCAForHost(host);
             if (resolvedAutoCert != nullptr) {
 #if defined(ESP8266)
-                delete esp8266TrustAnchor;
-                esp8266TrustAnchor = new BearSSL::X509List(resolvedAutoCert);
+                if (esp8266TrustAnchor == nullptr || esp8266TrustAnchorCert != resolvedAutoCert) {
+                    delete esp8266TrustAnchor;
+                    esp8266TrustAnchor = new BearSSL::X509List(resolvedAutoCert);
+                    esp8266TrustAnchorCert = resolvedAutoCert;
+                }
                 client->setTrustAnchors(esp8266TrustAnchor);
 #elif defined(ESP32)
                 client->setCACert(resolvedAutoCert);
@@ -590,47 +639,43 @@ void Web3::setupCert()
     }
 }
 
-void Web3::selectHost()
+bool Web3::parseEndpoint(const char* url, RpcEndpoint* endpoint)
 {
-#if defined(ESP8266)
-    esp8266TlsBufferSize = 0;
-#endif
-    std::string node = primaryRpcUrl;
+    if (endpoint == nullptr) return false;
+    *endpoint = RpcEndpoint();
+    std::string node = (url != nullptr) ? url : "";
 
-    if (node.length() == 0)
-    {
-        Serial.println("Error: No RPC URL configured for AploCoin");
-        return;
+    if (node.empty()) {
+        return false;
     }
 
     if (node.rfind("https://", 0) == 0) {
         node = node.substr(8);
-        port = 443;
+        endpoint->port = 443;
     } else if (node.rfind("http://", 0) == 0) {
         node = node.substr(7);
-        port = 80;
+        endpoint->port = 80;
     } else {
-        port = 443;  // Default HTTPS port
+        endpoint->port = 443;
     }
 
-    int ppos = node.find(":");
-    if (ppos > 0)
-    {
-        port = stoi(node.substr(ppos+1));
+    size_t ppos = node.find(':');
+    if (ppos != string::npos) {
+        endpoint->port = static_cast<unsigned short>(stoi(node.substr(ppos + 1)));
         node = node.substr(0, ppos);
     }
 
-    ppos = node.find("/");
-    if (ppos > 0)
-    {
-        host = strdup(node.substr(0, ppos).c_str());
-        path = strdup(node.substr(ppos).c_str());
+    ppos = node.find('/');
+    if (ppos != string::npos) {
+        endpoint->host = node.substr(0, ppos);
+        endpoint->path = node.substr(ppos);
+    } else {
+        endpoint->host = node;
+        endpoint->path = "/";
     }
-    else
-    {
-        host = strdup(node.c_str());
-        path = "/";
-    }
+
+    endpoint->valid = !endpoint->host.empty();
+    return endpoint->valid;
 }
 
 
@@ -643,35 +688,22 @@ long long Web3::getChainId() const {
 // -------------------------------
 
 string Web3::execWithFailover(const string* data) {
-    // Try primary RPC first
-    string result = exec(data);
-    
-    // Check if result is valid (non-empty and contains "result" field)
-    if (result.length() > 0 && result.find("\"result\"") != string::npos) {
+    string result = exec(data, primaryEndpoint);
+
+    if (!result.empty() && result.find("\"result\"") != string::npos) {
         return result;
     }
-    
-    // Primary failed, try fallback if configured
-    if (fallbackRpcUrl != nullptr && strlen(fallbackRpcUrl) > 0) {
+
+    if (fallbackEndpoint.valid) {
         Serial.println("Primary RPC failed, trying fallback...");
-        
-        // Temporarily switch to fallback
-        const char* originalPrimary = primaryRpcUrl;
-        primaryRpcUrl = fallbackRpcUrl;
-        selectHost();
-        
-        result = exec(data);
-        
-        // Restore primary for next call
-        primaryRpcUrl = originalPrimary;
-        selectHost();
-        
-        if (result.length() > 0 && result.find("\"result\"") != string::npos) {
+        result = exec(data, fallbackEndpoint);
+
+        if (!result.empty() && result.find("\"result\"") != string::npos) {
             Serial.println("Fallback RPC succeeded");
             return result;
         }
     }
-    
+
     Serial.println("All RPC endpoints failed");
     return "";
 }
