@@ -37,6 +37,9 @@ void Web3::initWeb3(const char* primaryRpc, const char* fallbackRpc) {
     certBundle = nullptr;
     certBundleSize = 0;
     resolvedAutoCert = nullptr;
+#if defined(ESP8266)
+    esp8266TrustAnchor = nullptr;
+#endif
     
     selectHost();
 }
@@ -517,8 +520,9 @@ void Web3::setupCert()
             // alive for the TLS connection duration.
             if (caCert != nullptr) {
 #if defined(ESP8266)
-                BearSSL::X509List trustAnchor(caCert);
-                client->setTrustAnchors(&trustAnchor);
+                delete esp8266TrustAnchor;
+                esp8266TrustAnchor = new BearSSL::X509List(caCert);
+                client->setTrustAnchors(esp8266TrustAnchor);
 #elif defined(ESP32)
                 client->setCACert(caCert);
 #else
@@ -533,8 +537,9 @@ void Web3::setupCert()
             resolvedAutoCert = getAploRootCAForHost(host);
             if (resolvedAutoCert != nullptr) {
 #if defined(ESP8266)
-                BearSSL::X509List trustAnchor(resolvedAutoCert);
-                client->setTrustAnchors(&trustAnchor);
+                delete esp8266TrustAnchor;
+                esp8266TrustAnchor = new BearSSL::X509List(resolvedAutoCert);
+                client->setTrustAnchors(esp8266TrustAnchor);
 #elif defined(ESP32)
                 client->setCACert(resolvedAutoCert);
 #else
