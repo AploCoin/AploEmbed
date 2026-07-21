@@ -56,12 +56,19 @@ const char *PRIVATE_KEY = "00000000000000000000000000000000000000000000000000000
 string myAddress;
 
 // Mining parameters
-#define BLOCK_COOLDOWN 20          // Minimum blocks between mine attempts
+#define BLOCK_COOLDOWN 20            // Minimum blocks between mine attempts
 #define HASH_ATTEMPTS_PER_CYCLE 2000 // Nonces to try before checking block height (~8 expected hits at 0x00ff...)
-#define CYCLE_DELAY_MS 1000        // Delay between hash cycles (ms)
+#define CYCLE_DELAY_MS 1000          // Delay between hash cycles (ms)
+
+// WiFi reconnect parameters
+#define WIFI_CONNECT_ATTEMPTS 3
+#define WIFI_ATTEMPT_TIMEOUT_MS 12000
+#define WIFI_RECONNECT_ATTEMPTS 2
+#define WIFI_RETRY_DELAY_MS 5000
 
 Web3 *web3;
 int wificounter = 0;
+unsigned long lastWifiRetryMs = 0;
 
 // Mining state
 struct MinerParams {
@@ -71,7 +78,9 @@ struct MinerParams {
     String prevHash;
 };
 
-void setup_wifi();
+bool setup_wifi(uint8_t maxAttempts = WIFI_CONNECT_ATTEMPTS);
+bool ensureWiFiConnected();
+void resetWiFiRadio();
 void queryStakingStatus(const char *address);
 MinerParams getMinerParams(const char *address);
 bool attemptMining(const char *address);
@@ -86,7 +95,10 @@ void setup()
     beginSerial();
     Serial.println("\n\n=== AploEmbed Mining Example ===\n");
 
-    setup_wifi();
+    while (!setup_wifi()) {
+        Serial.println("WiFi unavailable during setup; retrying in 5 seconds...");
+        delay(WIFI_RETRY_DELAY_MS);
+    }
 
     // Initialize Web3 with default AploCoin RPC endpoints
     // Uses pub1.aplocoin.com as primary, pub2.aplocoin.com as fallback
@@ -127,6 +139,11 @@ void setup()
 
 void loop()
 {
+    if (!ensureWiFiConnected()) {
+        delay(CYCLE_DELAY_MS);
+        return;
+    }
+
     // Attempt mining cycle
     bool mined = attemptMining(myAddress.c_str());
 
@@ -142,39 +159,94 @@ void loop()
     delay(CYCLE_DELAY_MS);
 }
 
-void setup_wifi()
+void resetWiFiRadio()
+{
+    WiFi.persistent(false);
+#if defined(ESP32)
+    WiFi.setSleep(false);        // modem sleep can make ESP32-C3 association flaky on some routers
+    WiFi.setAutoReconnect(true);
+    WiFi.disconnect(true, true); // reset STA state and forget any cached AP config
+#else
+    WiFi.setAutoReconnect(true);
+    WiFi.disconnect(true);
+#endif
+    WiFi.mode(WIFI_OFF);
+    delay(500);
+    WiFi.mode(WIFI_STA);
+    delay(200);
+}
+
+bool setup_wifi(uint8_t maxAttempts)
 {
     if (WiFi.status() == WL_CONNECTED) {
-        return;
+        return true;
     }
 
     Serial.print("Connecting to WiFi: ");
     Serial.println(ssid);
 
-    if (WiFi.status() != WL_CONNECTED) {
-        WiFi.persistent(false);
-        WiFi.mode(WIFI_OFF);
-        WiFi.mode(WIFI_STA);
+    for (uint8_t attempt = 1; attempt <= maxAttempts; attempt++) {
+        Serial.print("WiFi attempt ");
+        Serial.print(attempt);
+        Serial.print("/");
+        Serial.println(maxAttempts);
+
+        resetWiFiRadio();
         WiFi.begin(ssid, password);
+
+        const unsigned long startMs = millis();
+        wificounter = 0;
+        while (WiFi.status() != WL_CONNECTED && millis() - startMs < WIFI_ATTEMPT_TIMEOUT_MS) {
+            delay(500);
+            Serial.print(".");
+            wificounter++;
+        }
+
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.println("\nWiFi connected");
+            Serial.print("IP address: ");
+            Serial.println(WiFi.localIP());
+            Serial.println();
+            return true;
+        }
+
+        Serial.print("\nWiFi attempt failed. status=");
+        Serial.println(WiFi.status());
+        if (attempt < maxAttempts) {
+            Serial.println("Resetting WiFi radio and retrying...");
+            delay(1000);
+        }
     }
 
-    wificounter = 0;
-    while (WiFi.status() != WL_CONNECTED && wificounter < 20) {
-        delay(500);
-        Serial.print(".");
-        wificounter++;
+    Serial.println("WiFi connect failed after all attempts.");
+    Serial.println("Check SSID/password, 2.4 GHz network, router MAC filters, WPA mode, and signal strength.");
+    return false;
+}
+
+bool ensureWiFiConnected()
+{
+    if (WiFi.status() == WL_CONNECTED) {
+        return true;
     }
 
-    if (wificounter >= 20) {
-        Serial.println("\nFailed to connect to WiFi!");
-        Serial.println("Please check your credentials and try again.");
-        while (1) { delay(1000); }
+    const unsigned long now = millis();
+    if (lastWifiRetryMs != 0 && now - lastWifiRetryMs < WIFI_RETRY_DELAY_MS) {
+        return false;
+    }
+    lastWifiRetryMs = now;
+
+    Serial.print("\nWiFi disconnected. status=");
+    Serial.println(WiFi.status());
+    Serial.println("Pausing mining and reconnecting automatically...");
+
+    if (setup_wifi(WIFI_RECONNECT_ATTEMPTS)) {
+        Serial.println("WiFi reconnected; resuming mining.\n");
+        lastWifiRetryMs = 0;
+        return true;
     }
 
-    Serial.println("\nWiFi connected");
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
-    Serial.println();
+    Serial.println("Reconnect failed; will retry automatically.\n");
+    return false;
 }
 
 void queryBalances(const char *address)
