@@ -29,6 +29,9 @@ public:
 public:
     Contract(Web3* _web3, const char* address);
     explicit Contract(long long int networkId);
+    ~Contract();
+    Contract(const Contract&) = delete;
+    Contract& operator=(const Contract&) = delete;
     void SetPrivateKey(const char *key);
     std::string SetupContractData(const char* func, ...);
     std::string Call(const std::string* param);
@@ -44,6 +47,7 @@ private:
     Web3* web3;
     const char * contractAddress;
     Crypto* crypto;
+    bool ownsWeb3;
 
 private:
     static std::string GenerateContractBytes(const char *func);

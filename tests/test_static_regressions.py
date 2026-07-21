@@ -55,11 +55,48 @@ class StaticRegressionTests(unittest.TestCase):
     def test_esp32_and_http_runtime_regressions(self):
         web3 = read('src/Web3.cpp')
         self.assertIn('client->print(data->c_str())', web3)
-        self.assertIn('if (line == "\\r")', web3)
+        self.assertIn('headerState == 0x0d0a0d0aUL', web3)
         self.assertIn('node.rfind("https://", 0)', web3)
         self.assertIn('uint256_t zeroValue = 0;', web3)
         self.assertIn('&zeroValue,', web3)
         self.assertIn('architectures=esp32', read('library.properties'))
+
+    def test_esp8266_transport_uses_bounded_response_storage(self):
+        header = read('src/Web3.h')
+        web3 = read('src/Web3.cpp')
+        self.assertIn('APLO_ESP8266_RPC_RESPONSE_MAX', header)
+        self.assertIn('esp8266ResponseBuffer', header)
+        self.assertIn('HTTP response exceeds ESP8266 buffer', web3)
+        self.assertIn('return string(esp8266ResponseBuffer, responseLength);', web3)
+        self.assertIn('#else\n                result += c;\n#endif', web3)
+
+    def test_rpc_endpoint_state_is_owned_and_does_not_use_strdup(self):
+        header = read('src/Web3.h')
+        web3 = read('src/Web3.cpp')
+        self.assertIn('struct RpcEndpoint', header)
+        self.assertIn('RpcEndpoint primaryEndpoint', header)
+        self.assertIn('RpcEndpoint fallbackEndpoint', header)
+        self.assertNotIn('strdup(', web3)
+        self.assertNotIn('primaryRpcUrl = fallbackRpcUrl', web3)
+
+    def test_web3_resources_have_raii_lifecycle(self):
+        header = read('src/Web3.h')
+        web3 = read('src/Web3.cpp')
+        self.assertIn('~Web3();', header)
+        self.assertIn('Web3::~Web3()', web3)
+        self.assertNotIn('new (mem) WiFiClientSecure', web3)
+        self.assertNotIn('BYTE *mem;', header)
+
+    def test_contract_signing_path_has_no_per_transaction_leaks(self):
+        header = read('src/Contract.h')
+        contract = read('src/Contract.cpp')
+        self.assertIn('~Contract();', header)
+        self.assertIn('Contract::~Contract()', contract)
+        self.assertIn('uint8_t hash[ETHERS_KECCAK256_LENGTH];', contract)
+        self.assertIn('vector<uint8_t> bytes(encodedTxBytesLength);', contract)
+        self.assertNotIn('new uint8_t[', contract)
+        self.assertNotIn('new string("0")', contract)
+        self.assertIn('string zeroStr = "0";', contract)
 
     def test_json_result_parsing_is_centralized_in_tag_reader(self):
         tag_reader = read('src/TagReader/TagReader.cpp')
