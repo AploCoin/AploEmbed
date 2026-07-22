@@ -23,9 +23,14 @@
 #ifndef __OPTIONS_H__
 #define __OPTIONS_H__
 
-// use precomputed Curve Points (some scalar multiples of curve base point G)
+// Precomputed secp256k1 points trade ~37 KB of DRAM for speed on ESP8266.
+// Keep them on roomier targets; ESP8266 uses the lower-memory scalar path.
 #ifndef USE_PRECOMPUTED_CP
+#if defined(ESP8266)
+#define USE_PRECOMPUTED_CP 0
+#else
 #define USE_PRECOMPUTED_CP 1
+#endif
 #endif
 
 // use fast inverse method

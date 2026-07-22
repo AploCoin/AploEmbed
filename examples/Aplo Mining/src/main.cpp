@@ -255,25 +255,15 @@ void setup()
     Serial.println(F("\n\n=== AploEmbed Mining Example ===\n"));
     initWifiDiagnostics();
 
-#if defined(ESP8266)
-    Serial.print(F("Heap before WiFi: "));
-    Serial.println(ESP.getFreeHeap());
-#endif
-
     while (!connectWifi(WIFI_CONNECT_ATTEMPTS, WIFI_ATTEMPT_TIMEOUT_MS)) {
         Serial.println(F("WiFi unavailable during setup; retrying in 5 seconds..."));
         delay(WIFI_RETRY_DELAY_MS);
     }
 
 #if defined(ESP8266)
-    Serial.print(F("Heap after WiFi: "));
-    Serial.println(ESP.getFreeHeap());
-    // Allocate the BearSSL secondary stack only after WiFi association/DHCP.
-    // This keeps ~6.2 KB available to the ESP8266 radio during connection.
+    // Allocate the TLS/Web3 state only after WiFi association/DHCP.
     static Web3 esp8266Web3Instance;
     web3 = &esp8266Web3Instance;
-    Serial.print(F("Heap after Web3: "));
-    Serial.println(ESP.getFreeHeap());
 #endif
 
     Serial.println(F("Web3 initialized with AploCoin RPC endpoints"));

@@ -446,18 +446,18 @@ queryStakingStatus(myAddress.c_str());  // Shows 2,000 APLO, 1.1x multiplier
 To monitor staking status periodically, modify `loop()`:
 
 ```cpp
-void loop() 
+void loop()
 {
     static unsigned long lastCheck = 0;
     unsigned long now = millis();
-    
+
     // Check every 60 seconds
     if (now - lastCheck > 60000) {
         Serial.println("\n=== Periodic Status Check ===\n");
         queryStakingStatus(myAddress.c_str());
         lastCheck = now;
     }
-    
+
     delay(1000);
 }
 ```

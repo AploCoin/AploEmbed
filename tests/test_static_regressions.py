@@ -197,9 +197,15 @@ class StaticRegressionTests(unittest.TestCase):
         wifi_connect = mining.index('while (!connectWifi(')
         web3_init = mining.index('static Web3 esp8266Web3Instance;')
         self.assertLess(wifi_connect, web3_init)
-        self.assertIn('Heap before WiFi:', mining)
-        self.assertIn('Heap after WiFi:', mining)
-        self.assertIn('Heap after Web3:', mining)
+        self.assertNotIn('Heap before WiFi:', mining)
+        self.assertNotIn('Heap after WiFi:', mining)
+        self.assertNotIn('Heap after Web3:', mining)
+
+    def test_esp8266_disables_ram_heavy_precomputed_curve_table(self):
+        options = read('src/trezor/options.h')
+        self.assertIn('#if defined(ESP8266)', options)
+        self.assertIn('#define USE_PRECOMPUTED_CP 0', options)
+        self.assertIn('#define USE_PRECOMPUTED_CP 1', options)
 
     def test_wei_string_conversion_is_bounds_safe(self):
         util = read('src/Util.cpp')

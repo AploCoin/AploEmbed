@@ -164,22 +164,22 @@ void setup()
     beginSerial();
     Serial.println("\n\n=== AploEmbed Balance Query Example ===\n");
     initWifiDiagnostics();
-    
+
     while (!connectWifi(3, 20000)) {
         Serial.println("WiFi unavailable; retrying in 5 seconds...");
         delay(5000);
     }
-    
+
     // Initialize Web3 with default AploCoin RPC endpoints
     // Uses pub1.aplocoin.com as primary, pub2.aplocoin.com as fallback
     // Web3 auto-selects the bundled root CA for HTTPS RPC endpoints.
-    
-    
+
+
     Serial.println("Web3 initialized with AploCoin RPC endpoints");
     Serial.println("Primary: pub1.aplocoin.com");
     Serial.println("Fallback: pub2.aplocoin.com");
     Serial.println("TLS: auto root CA resolution enabled\n");
-    
+
     // Query balance in both units
     queryAploBalance();
     queryGaploBalance();
@@ -199,12 +199,12 @@ void loop()
 void queryAploBalance()
 {
     Serial.println("--- Querying Balance in APLO ---");
-    
+
     string address = APLO_ADDRESS;
-    
+
     // Get balance as human-readable APLO string (18 decimals)
     string balanceAplo = web3->AploGetBalanceInAplo(&address);
-    
+
     Serial.print("Address: ");
     Serial.println(address.c_str());
     Serial.print("Balance: ");
@@ -220,18 +220,18 @@ void queryAploBalance()
 void queryGaploBalance()
 {
     Serial.println("--- Querying Balance in Gaplo (wei) ---");
-    
+
     string address = APLO_ADDRESS;
-    
+
     // Get balance in Gaplo (wei) - raw blockchain units
     uint256_t balanceGaplo = web3->AploGetBalance(&address);
-    
+
     Serial.print("Address: ");
     Serial.println(address.c_str());
     Serial.print("Balance: ");
     Serial.print(balanceGaplo.str().c_str());
     Serial.println(" Gaplo");
-    
+
     // You can also convert manually using Util helper
     string balanceAplo = Util::ConvertWeiToEthString(&balanceGaplo, 18);
     Serial.print("Converted: ");
