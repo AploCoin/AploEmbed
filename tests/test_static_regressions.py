@@ -207,6 +207,13 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('#define USE_PRECOMPUTED_CP 0', options)
         self.assertIn('#define USE_PRECOMPUTED_CP 1', options)
 
+    def test_esp8266_tls_uses_sni_aware_mfln_handshake(self):
+        web3 = read('src/Web3.cpp')
+        esp8266_exec = web3[web3.index('#if defined(ESP8266)', web3.index('string Web3::exec')):web3.index('#else', web3.index('#if defined(ESP8266)', web3.index('string Web3::exec')))]
+        self.assertNotIn('probeMaxFragmentLength', esp8266_exec)
+        self.assertIn('endpoint.tlsBufferSize = 1024', esp8266_exec)
+        self.assertIn('client->getMFLNStatus()', web3)
+
     def test_wei_string_conversion_is_bounds_safe(self):
         util = read('src/Util.cpp')
         conversion = util[util.index('string Util::ConvertWeiToEthString'):util.index('string Util::ConvertEthToWei')]
@@ -258,16 +265,18 @@ class StaticRegressionTests(unittest.TestCase):
             source = read(f'examples/{example}/src/main.cpp')
             self.assertIn('#if defined(ESP8266)', source)
             self.assertIn('onStationModeDisconnected', source)
-            self.assertIn('onStationModeConnected', source)
-            self.assertIn('onStationModeGotIP', source)
-            self.assertIn('onStationModeDHCPTimeout', source)
-            self.assertIn('WiFi.config(IPAddress(0U), IPAddress(0U), IPAddress(0U))', source)
-            self.assertIn('ESP8266_WIFI_DHCP_TIMEOUT_MS', source)
-            self.assertIn('wifiStationAssociated', source)
-            self.assertIn('wifiGotIp', source)
+            self.assertNotIn('boardName()', source)
+            self.assertNotIn('onStationModeConnected', source)
+            self.assertNotIn('onStationModeGotIP', source)
+            self.assertNotIn('onStationModeDHCPTimeout', source)
+            self.assertIn('WiFi.localIP() != IPAddress(static_cast<uint32_t>(0))', source)
+            self.assertNotIn("Serial.print('.')", source)
+            self.assertIn('WiFi.config(IPAddress(static_cast<uint32_t>(0)),', source)
             self.assertIn('45000UL', source)
             self.assertNotIn('WiFi.disconnect(false)', source)
             self.assertIn('#elif defined(ESP32)', source)
+            if example == 'Aplo Mining':
+                self.assertIn('lastWifiRetryMs = 0;', source)
 
     def test_examples_do_not_allocate_web3_dynamically_or_hang_forever(self):
         sources = [

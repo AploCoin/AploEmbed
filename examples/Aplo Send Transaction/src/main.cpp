@@ -10,56 +10,18 @@ using std::string;
 extern const char *ssid;
 extern const char *password;
 
-// WiFi handling is kept in this sketch so the example is directly reusable.
 #if defined(ESP8266)
-static WiFiEventHandler wifiConnectedHandler;
 static WiFiEventHandler wifiDisconnectHandler;
-static WiFiEventHandler wifiGotIpHandler;
-static WiFiEventHandler wifiDhcpTimeoutHandler;
-static volatile bool wifiStationAssociated = false;
-static volatile bool wifiGotIp = false;
-static const unsigned long ESP8266_WIFI_DHCP_TIMEOUT_MS = 60000UL;
 #endif
 
-static const char *boardName()
+static void initWifi()
 {
 #if defined(ESP8266)
-    return "ESP8266";
-#elif defined(CONFIG_IDF_TARGET_ESP32C3)
-    return "ESP32-C3";
-#else
-    return "ESP32";
-#endif
-}
-
-static void initWifiDiagnostics()
-{
-#if defined(ESP8266)
-    wifiConnectedHandler = WiFi.onStationModeConnected(
-        [](const WiFiEventStationModeConnected &event) {
-            wifiStationAssociated = true;
-            Serial.print("\nESP8266 associated with AP on channel ");
-            Serial.println(event.channel);
-        });
     wifiDisconnectHandler = WiFi.onStationModeDisconnected(
         [](const WiFiEventStationModeDisconnected &event) {
-            wifiStationAssociated = false;
-            wifiGotIp = false;
-            Serial.print("\nWiFi disconnected from SSID=");
-            Serial.print(event.ssid);
-            Serial.print(", reason=");
+            Serial.print(F("WiFi disconnected, reason="));
             Serial.println(event.reason);
         });
-    wifiGotIpHandler = WiFi.onStationModeGotIP(
-        [](const WiFiEventStationModeGotIP &event) {
-            wifiStationAssociated = true;
-            wifiGotIp = true;
-            Serial.print("\nESP8266 DHCP address: ");
-            Serial.println(event.ip);
-        });
-    wifiDhcpTimeoutHandler = WiFi.onStationModeDHCPTimeout([]() {
-        Serial.println("\nESP8266 DHCP timeout");
-    });
 #endif
 }
 
@@ -68,78 +30,49 @@ static bool connectWifiOnce(unsigned long timeoutMs)
     WiFi.persistent(false);
     WiFi.setAutoReconnect(true);
 #if defined(ESP8266)
-    // Force DHCP mode in case an earlier sketch left a stale static-IP config.
-    // Samsung may show the station as associated before DHCP has completed.
     WiFi.mode(WIFI_STA);
-    WiFi.config(IPAddress(0U), IPAddress(0U), IPAddress(0U));
-    wifiStationAssociated = false;
-    wifiGotIp = false;
-    delay(100);
+    WiFi.config(IPAddress(static_cast<uint32_t>(0)), IPAddress(static_cast<uint32_t>(0)), IPAddress(static_cast<uint32_t>(0)));
     const unsigned long effectiveTimeout = timeoutMs < 45000UL ? 45000UL : timeoutMs;
 #elif defined(ESP32)
     WiFi.disconnect(true, true);
     WiFi.mode(WIFI_OFF);
     delay(250);
     WiFi.mode(WIFI_STA);
-    #if defined(CONFIG_IDF_TARGET_ESP32C3)
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
     WiFi.setSleep(false);
-    #endif
+#endif
     const unsigned long effectiveTimeout = timeoutMs;
 #endif
+
     WiFi.begin(ssid, password);
-    const unsigned long start = millis();
+    const unsigned long startedAt = millis();
+    while (millis() - startedAt < effectiveTimeout) {
+        if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(static_cast<uint32_t>(0))) return true;
+        delay(250);
 #if defined(ESP8266)
-    unsigned long associatedAt = 0;
-    while (!wifiGotIp) {
-        if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0U)) {
-            wifiGotIp = true;
-            break;
-        }
-        if (wifiStationAssociated && associatedAt == 0) associatedAt = millis();
-        const unsigned long allowed = associatedAt == 0
-            ? effectiveTimeout
-            : effectiveTimeout + ESP8266_WIFI_DHCP_TIMEOUT_MS;
-        if (millis() - start >= allowed) break;
-        delay(250);
-        Serial.print('.');
         yield();
-    }
-    return wifiGotIp && WiFi.localIP() != IPAddress(0U);
-#else
-    while (WiFi.status() != WL_CONNECTED && millis() - start < effectiveTimeout) {
-        delay(250);
-        Serial.print('.');
-    }
-    return WiFi.status() == WL_CONNECTED;
 #endif
+    }
+    return false;
 }
 
 static bool connectWifi(uint8_t maxAttempts, unsigned long timeoutMs)
 {
-    if (WiFi.status() == WL_CONNECTED) return true;
-    Serial.print("Connecting to WiFi on ");
-    Serial.print(boardName());
-    Serial.print(": ");
-    Serial.println(ssid);
-    for (uint8_t attempt = 1; attempt <= maxAttempts; ++attempt) {
-        Serial.print("WiFi attempt ");
-        Serial.print(attempt);
-        Serial.print('/');
-        Serial.println(maxAttempts);
+    if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(static_cast<uint32_t>(0))) return true;
+
+    for (uint8_t attempt = 0; attempt < maxAttempts; ++attempt) {
         if (connectWifiOnce(timeoutMs)) {
-            Serial.println("\nWiFi connected");
-            Serial.print("IP address: ");
+            Serial.print(F("WiFi connected: "));
             Serial.println(WiFi.localIP());
             return true;
         }
-        Serial.print("\nWiFi attempt failed. status=");
-        Serial.println(WiFi.status());
-        if (attempt < maxAttempts) delay(1000);
+        if (attempt + 1 < maxAttempts) delay(1000);
     }
-    Serial.println("WiFi connect failed after all attempts.");
+
+    Serial.print(F("WiFi failed, status="));
+    Serial.println(WiFi.status());
     return false;
 }
-
 
 static void beginSerial()
 {
@@ -192,11 +125,11 @@ uint256_t queryBalance(const char *address);
 void setup()
 {
     beginSerial();
-    Serial.println("\n\n=== AploEmbed Send Transaction Example ===\n");
-    initWifiDiagnostics();
+    Serial.println(F("\n\n=== AploEmbed Send Transaction Example ===\n"));
+    initWifi();
 
     while (!connectWifi(3, 20000)) {
-        Serial.println("WiFi unavailable; retrying in 5 seconds...");
+        Serial.println(F("WiFi unavailable; retrying in 5 seconds..."));
         delay(5000);
     }
 
@@ -205,29 +138,25 @@ void setup()
     // Web3 auto-selects the bundled root CA for HTTPS RPC endpoints.
 
 
-    Serial.println("Web3 initialized with AploCoin RPC endpoints");
-    Serial.println("Primary: pub1.aplocoin.com");
-    Serial.println("Fallback: pub2.aplocoin.com");
-    Serial.println("TLS: auto root CA resolution enabled\n");
 
     myAddress = Crypto::PrivateKeyToAddress(PRIVATE_KEY);
 
     uint256_t balance = queryBalance(myAddress.c_str());
     string balanceText = Util::ConvertWeiToEthString(&balance, 18);
-    Serial.print("My Address: ");
+    Serial.print(F("My Address: "));
     Serial.println(myAddress.c_str());
-    Serial.print("Current Balance: ");
+    Serial.print(F("Current Balance: "));
     Serial.print(balanceText.c_str());
-    Serial.println(" APLO\n");
+    Serial.println(F(" APLO\n"));
 
     const uint256_t sendAmount = Util::ConvertDecimalToWei(SEND_AMOUNT_APLO, 18);
     const uint256_t gasBuffer = Util::ConvertDecimalToWei("0.001", 18);
     const uint256_t requiredBalance = sendAmount + gasBuffer;
 
-    Serial.print("Attempting to send: ");
+    Serial.print(F("Attempting to send: "));
     Serial.print(SEND_AMOUNT_APLO);
-    Serial.println(" APLO");
-    Serial.print("To Address: ");
+    Serial.println(F(" APLO"));
+    Serial.print(F("To Address: "));
     Serial.println(RECIPIENT_ADDRESS);
     Serial.println();
 
@@ -238,17 +167,17 @@ void setup()
     }
     else
     {
-        Serial.println("ERROR: Insufficient balance!");
-        Serial.print("Required: ");
+        Serial.println(F("ERROR: Insufficient balance!"));
+        Serial.print(F("Required: "));
         string requiredText = Util::ConvertWeiToEthString(&requiredBalance, 18);
         Serial.print(requiredText.c_str());
-        Serial.print(" APLO (");
+        Serial.print(F(" APLO ("));
         Serial.print(SEND_AMOUNT_APLO);
-        Serial.println(" + 0.001 gas buffer)");
-        Serial.print("Available: ");
+        Serial.println(F(" + 0.001 gas buffer)"));
+        Serial.print(F("Available: "));
         Serial.print(balanceText.c_str());
-        Serial.println(" APLO");
-        Serial.println("\nTransaction aborted for safety.");
+        Serial.println(F(" APLO"));
+        Serial.println(F("\nTransaction aborted for safety."));
     }
 }
 
@@ -277,8 +206,6 @@ uint256_t queryBalance(const char *address)
  */
 void sendAploToAddress(const char *aplo, const char *destination)
 {
-    Serial.println("--- Preparing Transaction ---\n");
-
     // Create contract object for transaction signing
     // Empty address "" means this is a simple value transfer, not a contract call
     Contract contract(web3, "");
@@ -287,45 +214,14 @@ void sendAploToAddress(const char *aplo, const char *destination)
     // Convert APLO to Gaplo (wei) - 18 decimals
     uint256_t valueGaplo = Util::ConvertDecimalToWei(aplo, 18);
 
-    Serial.print("Amount: ");
-    Serial.print(aplo);
-    Serial.println(" APLO");
-    Serial.print("Amount in Gaplo (wei): ");
-    Serial.println(valueGaplo.str().c_str());
-    Serial.println();
-
     // Get current nonce (transaction count) for the sender
     string myAddr = myAddress;
-    Serial.print("Fetching nonce for: ");
-    Serial.println(myAddr.c_str());
     uint32_t nonce = (uint32_t)web3->EthGetTransactionCount(&myAddr);
-    Serial.print("Nonce: ");
-    Serial.println(nonce);
-    Serial.println();
-
     // Prepare transaction parameters
     string destinationAddr = destination;
     string emptyData = "";  // No data for simple transfers
 
-    Serial.println("Transaction Parameters:");
-    Serial.print("  From: ");
-    Serial.println(myAddress.c_str());
-    Serial.print("  To: ");
-    Serial.println(destination);
-    Serial.print("  Value: ");
-    Serial.print(aplo);
-    Serial.println(" APLO");
-    Serial.print("  Gas Price: ");
-    Serial.print((unsigned long)(GAS_PRICE / 1000000000ULL));
-    Serial.println(" Gwei");
-    Serial.print("  Gas Limit: ");
-    Serial.println(GAS_LIMIT);
-    Serial.print("  Nonce: ");
-    Serial.println(nonce);
-    Serial.println();
-
     // Sign and send transaction
-    Serial.println("Signing and sending transaction...");
     string txResult = contract.SendTransaction(
         nonce,
         GAS_PRICE,
@@ -338,27 +234,15 @@ void sendAploToAddress(const char *aplo, const char *destination)
     // Parse transaction hash from result
     string txHash = web3->getString(&txResult);
 
-    Serial.println("\n--- Transaction Result ---\n");
-
     if (txHash.length() > 0 && txHash != "0x")
     {
-        Serial.println("SUCCESS! Transaction sent.");
-        Serial.print("Transaction Hash: ");
+        Serial.print(F("Transaction Hash: "));
         Serial.println(txHash.c_str());
-        Serial.println();
-        Serial.println("You can track this transaction on the AploCoin block explorer");
-        Serial.println("(if available) using the transaction hash above.");
     }
     else
     {
-        Serial.println("ERROR: Transaction failed!");
-        Serial.println("Possible reasons:");
-        Serial.println("  - Insufficient balance for amount + gas");
-        Serial.println("  - Invalid recipient address");
-        Serial.println("  - Network connectivity issues");
-        Serial.println("  - RPC endpoint unavailable");
-        Serial.println();
-        Serial.print("Raw result: ");
+        Serial.println(F("ERROR: Transaction failed!"));
+        Serial.print(F("Raw result: "));
         Serial.println(txResult.c_str());
     }
 
