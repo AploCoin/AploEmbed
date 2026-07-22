@@ -44,7 +44,7 @@ The base reward is not calculated from the staked amount. In `core/state_transit
 
 ## Configuration
 
-Edit the shared application source:
+Edit this example source:
 
 ```text
 examples/Aplo Mining/src/main.cpp
