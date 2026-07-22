@@ -44,7 +44,8 @@ public:
     static std::vector<std::string>* InterpretVectorResult(std::string *result);
     static void PadForward(std::string *target, int targetSize);
     static uint256_t ConvertToWei(double val, int decimals);
-    static std::string ConvertWeiToEthString(uint256_t *weiVal, int decimals);
+    static uint256_t ConvertDecimalToWei(const std::string& amount, int decimals);
+    static std::string ConvertWeiToEthString(const uint256_t *weiVal, int decimals);
     static std::string intToHex(int value);
 
     static std::vector<std::string>* ConvertCharStrToVector32(const char *resultPtr, size_t resultSize, std::vector<std::string> *result);

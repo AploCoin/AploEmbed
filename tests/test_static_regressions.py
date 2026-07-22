@@ -59,7 +59,7 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('node.rfind("https://", 0)', web3)
         self.assertIn('uint256_t zeroValue = 0;', web3)
         self.assertIn('&zeroValue,', web3)
-        self.assertIn('architectures=esp32', read('library.properties'))
+        self.assertIn('architectures=esp32,esp8266', read('library.properties'))
 
     def test_esp8266_transport_uses_bounded_response_storage(self):
         header = read('src/Web3.h')
@@ -141,10 +141,17 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('Crypto::RandomBytes', keyid)
         self.assertNotIn('random_buffer(privateKeyBytes', keyid)
 
+    def mining_sources(self):
+        return [
+            read('examples/Aplo Mining/ESP32/src/main.cpp'),
+            read('examples/Aplo Mining/ESP32-C3/src/main.cpp'),
+            read('examples/Aplo Mining/ESP8266/src/main.cpp'),
+        ]
+
     def test_mining_hash_and_balance_regressions(self):
         util = read('src/Util.cpp')
         web3 = read('src/Web3.cpp')
-        mining = read('examples/Aplo Mining/main.cpp')
+        mining = read('examples/common/src/AploMiningApp.cpp')
         crypto_header = read('src/Crypto.h')
         crypto_impl = read('src/Crypto.cpp')
         self.assertIn('return ConvertBytesToHex(hash, 32);', util)
@@ -177,17 +184,157 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertNotIn('String hash', hot_loop)
         self.assertNotIn('string packed', hot_loop)
 
-    def test_examples_keep_only_default_esp32_platformio_env(self):
-        for rel in [
-            'examples/Aplo Mining/platformio.ini',
-            'examples/Aplo Balance Query/platformio.ini',
-            'examples/Aplo Send Transaction/platformio.ini',
-            'examples/Aplo Staking/platformio.ini',
+    def test_wei_string_conversion_is_bounds_safe(self):
+        util = read('src/Util.cpp')
+        conversion = util[util.index('string Util::ConvertWeiToEthString'):util.index('string Util::ConvertEthToWei')]
+        self.assertNotIn('char buffer[65]', conversion)
+        self.assertNotIn('memcpy(', conversion)
+        self.assertIn('amount.insert(0,', conversion)
+        self.assertIn('decimals < 0', conversion)
+        self.assertIn('decimals > 77', conversion)
+
+    def test_convert_to_wei_uses_bounded_formatting(self):
+        util = read('src/Util.cpp')
+        conversion = util[util.index('uint256_t Util::ConvertToWei'):util.index('string Util::ConvertWeiToEthString')]
+        self.assertNotIn('sprintf(', conversion)
+        self.assertIn('snprintf(', conversion)
+
+    def test_examples_are_split_by_platform_with_shared_application_code(self):
+        board_dirs = {
+            'ESP32': ('espressif32', 'esp32dev'),
+            'ESP32-C3': ('espressif32', 'esp32-c3-devkitm-1'),
+            'ESP8266': ('espressif8266', 'esp12e'),
+        }
+        for example in [
+            'Aplo Mining',
+            'Aplo Balance Query',
+            'Aplo Send Transaction',
+            'Aplo Staking',
         ]:
-            ini = read(rel)
-            self.assertIn('[env:esp32dev]', ini)
-            self.assertNotIn('[env:esp32-c3-devkitm-1]', ini)
-            self.assertNotIn('[env:esp12e]', ini)
+            for board_dir, (platform, board) in board_dirs.items():
+                root = ROOT / 'examples' / example / board_dir
+                self.assertTrue((root / 'platformio.ini').exists())
+                self.assertTrue((root / 'src' / 'main.cpp').exists())
+                ini = (root / 'platformio.ini').read_text()
+                self.assertIn(f'platform = {platform}', ini)
+                self.assertIn(f'board = {board}', ini)
+                self.assertIn('file://../../..', ini)
+                main = (root / 'src' / 'main.cpp').read_text()
+                self.assertIn('BoardWifi.h', main)
+
+    def test_board_wifi_adapters_do_not_share_destructive_reset_logic(self):
+        esp8266 = read('examples/Aplo Mining/ESP8266/src/BoardWifi.h')
+        esp32 = read('examples/Aplo Mining/ESP32/src/BoardWifi.h')
+        esp32c3 = read('examples/Aplo Mining/ESP32-C3/src/BoardWifi.h')
+        self.assertNotIn('WiFi.disconnect(true)', esp8266)
+        self.assertNotIn('WIFI_OFF', esp8266)
+        self.assertIn('onStationModeDisconnected', esp8266)
+        self.assertIn('45000UL', esp8266)
+        self.assertNotIn('WiFi.disconnect(false)', esp8266)
+        self.assertIn('WiFi.disconnect(true, true)', esp32)
+        self.assertIn('WiFi.setSleep(false)', esp32c3)
+
+    def test_examples_do_not_allocate_web3_dynamically_or_hang_forever(self):
+        shared_sources = [
+            read('examples/common/src/AploBalanceApp.cpp'),
+            read('examples/common/src/AploSendTransactionApp.cpp'),
+            read('examples/common/src/AploStakingApp.cpp'),
+            read('examples/common/src/AploMiningApp.cpp'),
+        ]
+        for source in shared_sources:
+            self.assertNotIn('new Web3', source)
+            self.assertNotIn('while (WiFi.status() != WL_CONNECTED)', source)
+
+    def test_keyid_uses_raii_and_does_not_stall_on_eeprom_failure(self):
+        header = read('src/KeyID.h')
+        impl = read('src/KeyID.cpp')
+        self.assertIn('BYTE privateKeyBytes[ETHERS_PRIVATEKEY_LENGTH];', header)
+        self.assertIn('Crypto crypto;', header)
+        self.assertNotIn('new BYTE[', impl)
+        self.assertNotIn('new Crypto', impl)
+        self.assertNotIn('delay(1000000)', impl)
+        self.assertIn('if (!beginKeyStorage())', impl)
+        self.assertIn('if (!EEPROM.commit())', impl)
+
+    def test_rpc_url_parser_validates_ports_without_exceptions(self):
+        web3 = read('src/Web3.cpp')
+        self.assertNotIn('stoi(', web3)
+        self.assertIn('parsePort', web3)
+        self.assertIn('portValue > 65535UL', web3)
+        self.assertIn("const size_t pathPos = node.find('/')", web3)
+        self.assertIn("const size_t colonPos = authority.rfind(':')", web3)
+
+    def test_get_string_has_no_debug_serial_output(self):
+        web3 = read('src/Web3.cpp')
+        get_string = web3[web3.index('string Web3::getString'):web3.index('/**', web3.index('string Web3::getString'))]
+        self.assertNotIn('Serial.', get_string)
+
+    def test_all_platform_examples_compile_against_local_sources(self):
+        """Optional integration gate: APLO_RUN_PLATFORMIO_MATRIX=1 enables all 12 builds."""
+        import os
+        import subprocess
+
+        if os.environ.get('APLO_RUN_PLATFORMIO_MATRIX') != '1':
+            self.skipTest('set APLO_RUN_PLATFORMIO_MATRIX=1 to run PlatformIO build matrix')
+
+        for example in [
+            'Aplo Mining',
+            'Aplo Balance Query',
+            'Aplo Send Transaction',
+            'Aplo Staking',
+        ]:
+            for board_dir in ['ESP32', 'ESP32-C3', 'ESP8266']:
+                project_dir = ROOT / 'examples' / example / board_dir
+                with self.subTest(example=example, board=board_dir):
+                    subprocess.run(
+                        ['uvx', '--from', 'platformio', 'platformio', 'run'],
+                        cwd=project_dir,
+                        check=True,
+                        timeout=600,
+                    )
+
+    def test_remaining_runtime_audit_regressions_are_hardened(self):
+        web3 = read('src/Web3.cpp')
+        script = read('src/ScriptClient.cpp')
+        contract = read('src/Contract.cpp')
+        util = read('src/Util.cpp')
+        crypto_header = read('src/Crypto.h')
+
+        self.assertIn('HTTP RPC endpoints are not supported', web3)
+        self.assertIn('if (parseIndex == std::string::npos', script)
+        self.assertIn('if (endParseIndex == std::string::npos', script)
+        self.assertIn('stripHexPrefix', contract)
+        self.assertIn('isHexString', contract)
+        self.assertIn('if (result == nullptr || result->empty())', util)
+        self.assertIn('size_t input_len = input.size();', util)
+        self.assertIn('size_t length', crypto_header)
+
+    def test_money_examples_use_exact_decimal_strings(self):
+        util_header = read('src/Util.h')
+        util = read('src/Util.cpp')
+        send = read('examples/common/src/AploSendTransactionApp.cpp')
+        staking = read('examples/common/src/AploStakingApp.cpp')
+        self.assertIn('ConvertDecimalToWei(const std::string& amount, int decimals)', util_header)
+        self.assertIn('ConvertDecimalToWei(const string& amount, int decimals)', util)
+        self.assertNotIn('ConvertToWei(aplo, 18)', send)
+        self.assertNotIn('ConvertToWei(aplo, 18)', staking)
+        self.assertIn('SEND_AMOUNT_APLO "0.01"', send)
+        self.assertIn('STAKE_AMOUNT_APLO "1000"', staking)
+
+    def test_hex_formatting_avoids_unbounded_alloca(self):
+        util = read('src/Util.cpp')
+        for function in ['PlainVectorToString', 'ConvertBytesToHex', 'ConvertBase']:
+            start = util.index(function)
+            end = util.find('\n}', start) + 2
+            self.assertNotIn('alloca(', util[start:end])
+
+    def test_package_metadata_exports_examples_without_build_artifacts(self):
+        import json
+        metadata = json.loads(read('library.json'))
+        self.assertIn('espressif8266', metadata['platforms'])
+        self.assertIn('examples', metadata['export']['include'])
+        self.assertIn('docs', metadata['export']['include'])
+        self.assertIn('examples/**/.pio/**', metadata['export']['exclude'])
 
     def test_platform_specific_docs_exist(self):
         for rel in [
@@ -206,9 +353,9 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('PrivateKeyToPublic(privateKeyBytes, publicKey)', crypto_impl)
         self.assertIn('PublicKeyToAddress(publicKey, address)', crypto_impl)
         for rel in [
-            'examples/Aplo Mining/main.cpp',
-            'examples/Aplo Send Transaction/main.cpp',
-            'examples/Aplo Staking/main.cpp',
+            'examples/common/src/AploMiningApp.cpp',
+            'examples/common/src/AploSendTransactionApp.cpp',
+            'examples/common/src/AploStakingApp.cpp',
         ]:
             example = read(rel)
             self.assertNotIn('#define MY_ADDRESS', example)

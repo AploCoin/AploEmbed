@@ -47,7 +47,7 @@ The staking system uses a tier-based multiplier system:
 
 ### 1. WiFi Credentials
 
-Edit `main.cpp` and update:
+Edit `examples/common/src/AploStakingApp.cpp` and update:
 
 ```cpp
 const char *ssid = "<YOUR_SSID>";
@@ -74,7 +74,7 @@ Security:
 Adjust the stake amount. The minimum for Gaplo mining rewards is 1,000 APLO:
 
 ```cpp
-#define STAKE_AMOUNT_APLO 1000.0
+#define STAKE_AMOUNT_APLO "1000"
 ```
 
 ### 4. RPC Configuration
@@ -99,7 +99,7 @@ web3 = new Web3("primary-rpc.aplocoin.com", "fallback-rpc.aplocoin.com");
 
 ```bash
 # Navigate to the example directory
-cd "examples/Aplo Staking"
+cd "examples/Aplo Staking/ESP32"  # or ESP32-C3 / ESP8266
 
 # Build the project
 pio run
@@ -294,7 +294,7 @@ Stakes APLO in the staking contract to set the Gaplo mining reward level/multipl
 **Example:**
 ```cpp
 string stakingContract = APLO_STAKING_CONTRACT;
-uint256_t amount = Util::ConvertToWei(1000.0, 18);  // 1000 APLO
+uint256_t amount = Util::ConvertDecimalToWei("1000", 18);  // 1000 APLO
 string myAddr = myAddress;
 string txHash = web3->AploStake(&stakingContract, &amount, PRIVATE_KEY, &myAddr);
 ```
@@ -333,7 +333,7 @@ AploCoin uses 18 decimal places:
 
 ```cpp
 // APLO to Gaplo (wei)
-uint256_t gaplo = Util::ConvertToWei(1000.0, 18);  // 1000 APLO -> Gaplo
+uint256_t gaplo = Util::ConvertDecimalToWei("1000", 18);  // 1000 APLO -> Gaplo
 
 // Gaplo (wei) to APLO string
 string aplo = Util::ConvertWeiToEthString(&gaplo, 18);  // Gaplo -> "1000.0"
@@ -476,7 +476,7 @@ void loop()
 
 - **Aplo Balance Query**: Query APLO/Gaplo balances
 - **Aplo Send Transaction**: Send APLO to addresses
-- **Aplo Mining** (future): Mining operations with staking multipliers
+- **Aplo Mining**: Mining operations with staking multipliers
 
 ## References
 

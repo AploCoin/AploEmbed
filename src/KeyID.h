@@ -19,11 +19,12 @@ public:
     bool hasRecoveredKey() { return recoveredKey; };
 	
 private:
-    void initPrivateKey(const std::string& privateKey, Web3* web3);
+    bool beginKeyStorage();
+    void initPrivateKey(const std::string& privateKey);
 
-    BYTE *privateKeyBytes;
+    BYTE privateKeyBytes[ETHERS_PRIVATEKEY_LENGTH];
     bool recoveredKey;
-    Crypto *crypto;
+    Crypto crypto;
 };
 
 #endif

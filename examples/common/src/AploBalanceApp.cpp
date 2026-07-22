@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <AploPlatform.h>
+#include "ExampleWifi.h"
 #include <Web3.h>
 #include <AploContracts.h>
 #include <Util.h>
@@ -19,30 +20,26 @@ const char *password = "<YOUR_WIFI_PASSWORD>";
 // Example AploCoin address - replace with your address
 #define APLO_ADDRESS "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb"
 
-Web3 *web3;
-int wificounter = 0;
+Web3 web3Instance;
+Web3 *web3 = &web3Instance;
 
-void setup_wifi();
 void queryAploBalance();
 void queryGaploBalance();
 
-void setup() 
+void AploBalanceAppSetup()
 {
     beginSerial();
     Serial.println("\n\n=== AploEmbed Balance Query Example ===\n");
     
-    setup_wifi();
+    while (!exampleWifiConnect(ssid, password, 3, 20000)) {
+        Serial.println("WiFi unavailable; retrying in 5 seconds...");
+        delay(5000);
+    }
     
     // Initialize Web3 with default AploCoin RPC endpoints
     // Uses pub1.aplocoin.com as primary, pub2.aplocoin.com as fallback
-    web3 = new Web3();
     // Web3 auto-selects the bundled root CA for HTTPS RPC endpoints.
     
-    // Alternative: specify custom RPC endpoint
-    // web3 = new Web3("custom-rpc.aplocoin.com");
-    
-    // Alternative: specify both primary and fallback
-    // web3 = new Web3("primary-rpc.aplocoin.com", "fallback-rpc.aplocoin.com");
     
     Serial.println("Web3 initialized with AploCoin RPC endpoints");
     Serial.println("Primary: pub1.aplocoin.com");
@@ -54,7 +51,7 @@ void setup()
     queryGaploBalance();
 }
 
-void loop() 
+void AploBalanceAppLoop()
 {
     // Balance queries are typically done once or on-demand
     // You can add periodic queries here if needed
@@ -106,60 +103,5 @@ void queryGaploBalance()
     Serial.print("Converted: ");
     Serial.print(balanceAplo.c_str());
     Serial.println(" APLO");
-    Serial.println();
-}
-
-/**
- * WiFi setup routine for ESP32
- * Adjust as needed for your platform
- */
-void setup_wifi()
-{
-    if (WiFi.status() == WL_CONNECTED)
-    {
-        return;
-    }
-
-    Serial.println();
-    Serial.print("Connecting to WiFi: ");
-    Serial.println(ssid);
-
-    if (WiFi.status() != WL_CONNECTED)
-    {
-        WiFi.persistent(false);
-        WiFi.mode(WIFI_OFF);
-        WiFi.mode(WIFI_STA);
-        WiFi.begin(ssid, password);
-    }
-
-    wificounter = 0;
-    while (WiFi.status() != WL_CONNECTED && wificounter < 40)
-    {
-        for (int i = 0; i < 500; i++)
-        {
-            delay(1);
-        }
-        Serial.print(".");
-        wificounter++;
-    }
-
-    if (wificounter >= 40)
-    {
-        Serial.println("\nWiFi connection failed.");
-        Serial.print("WiFi status: ");
-        Serial.println(WiFi.status());
-        Serial.println("Check SSID/password, 2.4 GHz network, and router MAC filters.");
-        while (WiFi.status() != WL_CONNECTED) {
-            delay(1000);
-            Serial.print(".");
-        }
-    }
-
-    delay(10);
-
-    Serial.println("");
-    Serial.println("WiFi connected!");
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
     Serial.println();
 }

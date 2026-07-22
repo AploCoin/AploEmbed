@@ -410,27 +410,46 @@ string Contract::GenerateBytesForUIntArray(const vector<uint32_t> *v)
     return output;
 }
 
+static bool stripHexPrefix(const string *value, string *cleaned)
+{
+    if (value == nullptr || cleaned == nullptr) return false;
+    *cleaned = *value;
+    if (cleaned->length() >= 2 && cleaned->at(0) == '0' &&
+        (cleaned->at(1) == 'x' || cleaned->at(1) == 'X')) {
+        *cleaned = cleaned->substr(2);
+    }
+    return true;
+}
+
+static bool isHexString(const string& value)
+{
+    for (size_t i = 0; i < value.length(); ++i) {
+        if (!isxdigit(static_cast<unsigned char>(value[i]))) return false;
+    }
+    return true;
+}
+
 string Contract::GenerateBytesForAddress(const string *v)
 {
-    string cleaned = *v;
-    if (v->at(0) == 'x') cleaned = v->substr(1);
-    else if (v->at(1) == 'x') cleaned = v->substr(2);
-    size_t digits = cleaned.length();
-    return string(64 - digits, '0') + cleaned;
+    string cleaned;
+    if (!stripHexPrefix(v, &cleaned) || cleaned.length() > 40 || !isHexString(cleaned)) {
+        return string(64, '0');
+    }
+    return string(64 - cleaned.length(), '0') + cleaned;
 }
 
 string Contract::GenerateBytesForString(const string *value)
 {
-    const char *valuePtr = value->c_str(); //don't fail if given a 'String'
-    size_t length = strlen(valuePtr);
-    return GenerateBytesForBytes(valuePtr, length);
+    if (value == nullptr) return string(64, '0');
+    return GenerateBytesForBytes(value->c_str(), value->length());
 }
 
 string Contract::GenerateBytesForHexBytes(const string *value)
 {
-    string cleaned = *value;
-    if (value->at(0) == 'x') cleaned = value->substr(1);
-    else if (value->at(1) == 'x') cleaned = value->substr(2);
+    string cleaned;
+    if (!stripHexPrefix(value, &cleaned) || (cleaned.length() % 2) != 0 || !isHexString(cleaned)) {
+        return string(64, '0');
+    }
     string digitsStr = Util::intToHex(cleaned.length() / 2); //bytes length will be hex length / 2
     string lengthDesignator = string(64 - digitsStr.length(), '0') + digitsStr;
     cleaned = lengthDesignator + cleaned;
@@ -462,10 +481,8 @@ string Contract::GenerateBytesForFixedBytes(const string *value, size_t byteSize
 
 string Contract::GenerateBytesForStruct(const string *value)
 {
-    //struct has no length params: not required
-    string cleaned = *value;
-    if (value->at(0) == 'x') cleaned = value->substr(1);
-    else if (value->at(1) == 'x') cleaned = value->substr(2);
+    string cleaned;
+    if (!stripHexPrefix(value, &cleaned) || !isHexString(cleaned)) return "";
     size_t digits = cleaned.length() % 64;
     return cleaned + (digits > 0 ? string(64 - digits, '0') : "");
 }

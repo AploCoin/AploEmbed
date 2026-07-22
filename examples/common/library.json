@@ -1,0 +1,9 @@
+{
+  "name": "AploExampleApps",
+  "version": "1.0.0",
+  "build": {
+    "srcDir": "src"
+  },
+  "frameworks": "arduino",
+  "platforms": ["espressif32", "espressif8266"]
+}
