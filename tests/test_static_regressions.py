@@ -225,8 +225,8 @@ class StaticRegressionTests(unittest.TestCase):
     def test_examples_are_self_contained_and_use_github_dependency(self):
         self.assertFalse((ROOT / 'examples' / 'common').exists())
         expected_markers = {
-            'Aplo Mining': ['attemptMining', 'submitMineTransaction', 'ensureWifiConnected'],
-            'Aplo Balance Query': ['queryBalance'],
+            'Aplo Mining': ['attemptMining', 'submitMineTransaction', 'WIFI_ATTEMPT_TIMEOUT_MS'],
+            'Aplo Balance Query': ['queryAploBalance', 'queryGaploBalance'],
             'Aplo Send Transaction': ['sendAploToAddress', 'SEND_AMOUNT_APLO'],
             'Aplo Staking': ['queryStakingStatus', 'stakeAplo', 'STAKE_AMOUNT_APLO'],
         }
@@ -258,12 +258,16 @@ class StaticRegressionTests(unittest.TestCase):
             source = read(f'examples/{example}/src/main.cpp')
             self.assertIn('#if defined(ESP8266)', source)
             self.assertIn('onStationModeDisconnected', source)
-            self.assertIn('wifiHandlerRegistered', source)
-            self.assertIn('WiFi.localIP() == IPAddress(static_cast<uint32_t>(0))', source)
+            self.assertIn('onStationModeConnected', source)
+            self.assertIn('onStationModeGotIP', source)
+            self.assertIn('onStationModeDHCPTimeout', source)
             self.assertIn('WiFi.config(IPAddress(0U), IPAddress(0U), IPAddress(0U))', source)
+            self.assertIn('ESP8266_WIFI_DHCP_TIMEOUT_MS', source)
+            self.assertIn('wifiStationAssociated', source)
+            self.assertIn('wifiGotIp', source)
             self.assertIn('45000UL', source)
             self.assertNotIn('WiFi.disconnect(false)', source)
-            self.assertIn('#else\n    WiFi.disconnect(true, true)', source)
+            self.assertIn('#elif defined(ESP32)', source)
 
     def test_examples_do_not_allocate_web3_dynamically_or_hang_forever(self):
         sources = [
