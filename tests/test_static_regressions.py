@@ -268,6 +268,8 @@ class StaticRegressionTests(unittest.TestCase):
             self.assertIn('45000UL', source)
             self.assertNotIn('WiFi.disconnect(false)', source)
             self.assertIn('#elif defined(ESP32)', source)
+            if example == 'Aplo Mining':
+                self.assertIn('lastWifiRetryMs = 0;', source)
 
     def test_examples_do_not_allocate_web3_dynamically_or_hang_forever(self):
         sources = [

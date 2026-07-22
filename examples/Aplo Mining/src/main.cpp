@@ -65,6 +65,7 @@ static bool connectWifi(uint8_t maxAttempts, unsigned long timeoutMs)
         if (connectWifiOnce(timeoutMs)) {
             Serial.print(F("WiFi connected: "));
             Serial.println(WiFi.localIP());
+            lastWifiRetryMs = 0;
             return true;
         }
         if (attempt + 1 < maxAttempts) delay(1000);
