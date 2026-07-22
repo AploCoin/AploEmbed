@@ -12,7 +12,13 @@ extern const char *password;
 
 // WiFi handling is kept in this sketch so the example is directly reusable.
 #if defined(ESP8266)
+static WiFiEventHandler wifiConnectedHandler;
 static WiFiEventHandler wifiDisconnectHandler;
+static WiFiEventHandler wifiGotIpHandler;
+static WiFiEventHandler wifiDhcpTimeoutHandler;
+static volatile bool wifiStationAssociated = false;
+static volatile bool wifiGotIp = false;
+static const unsigned long ESP8266_WIFI_DHCP_TIMEOUT_MS = 60000UL;
 #endif
 static unsigned long lastWifiRetryMs = 0;
 
@@ -30,13 +36,31 @@ static const char *boardName()
 static void initWifiDiagnostics()
 {
 #if defined(ESP8266)
+    wifiConnectedHandler = WiFi.onStationModeConnected(
+        [](const WiFiEventStationModeConnected &event) {
+            wifiStationAssociated = true;
+            Serial.print("\nESP8266 associated with AP on channel ");
+            Serial.println(event.channel);
+        });
     wifiDisconnectHandler = WiFi.onStationModeDisconnected(
         [](const WiFiEventStationModeDisconnected &event) {
+            wifiStationAssociated = false;
+            wifiGotIp = false;
             Serial.print("\nWiFi disconnected from SSID=");
             Serial.print(event.ssid);
             Serial.print(", reason=");
             Serial.println(event.reason);
         });
+    wifiGotIpHandler = WiFi.onStationModeGotIP(
+        [](const WiFiEventStationModeGotIP &event) {
+            wifiStationAssociated = true;
+            wifiGotIp = true;
+            Serial.print("\nESP8266 DHCP address: ");
+            Serial.println(event.ip);
+        });
+    wifiDhcpTimeoutHandler = WiFi.onStationModeDHCPTimeout([]() {
+        Serial.println("\nESP8266 DHCP timeout");
+    });
 #endif
 }
 
@@ -45,8 +69,12 @@ static bool connectWifiOnce(unsigned long timeoutMs)
     WiFi.persistent(false);
     WiFi.setAutoReconnect(true);
 #if defined(ESP8266)
-    // Do not reset an association that may recover after transient reason=2.
+    // Force DHCP mode in case an earlier sketch left a stale static-IP config.
+    // Samsung may show the station as associated before DHCP has completed.
     WiFi.mode(WIFI_STA);
+    WiFi.config(IPAddress(0U), IPAddress(0U), IPAddress(0U));
+    wifiStationAssociated = false;
+    wifiGotIp = false;
     delay(100);
     const unsigned long effectiveTimeout = timeoutMs < 45000UL ? 45000UL : timeoutMs;
 #elif defined(ESP32)
@@ -61,14 +89,30 @@ static bool connectWifiOnce(unsigned long timeoutMs)
 #endif
     WiFi.begin(ssid, password);
     const unsigned long start = millis();
+#if defined(ESP8266)
+    unsigned long associatedAt = 0;
+    while (!wifiGotIp) {
+        if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0U)) {
+            wifiGotIp = true;
+            break;
+        }
+        if (wifiStationAssociated && associatedAt == 0) associatedAt = millis();
+        const unsigned long allowed = associatedAt == 0
+            ? effectiveTimeout
+            : effectiveTimeout + ESP8266_WIFI_DHCP_TIMEOUT_MS;
+        if (millis() - start >= allowed) break;
+        delay(250);
+        Serial.print('.');
+        yield();
+    }
+    return wifiGotIp && WiFi.localIP() != IPAddress(0U);
+#else
     while (WiFi.status() != WL_CONNECTED && millis() - start < effectiveTimeout) {
         delay(250);
         Serial.print('.');
-#if defined(ESP8266)
-        yield();
-#endif
     }
     return WiFi.status() == WL_CONNECTED;
+#endif
 }
 
 static bool connectWifi(uint8_t maxAttempts, unsigned long timeoutMs)
