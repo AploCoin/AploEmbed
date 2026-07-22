@@ -311,27 +311,12 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
     host = endpoint.host.c_str();
 
 #if defined(ESP8266)
-    // Allocate the owning result buffer before MFLN/TLS activity. Its capacity
-    // is fixed for the request, so receiving the body performs no heap growth.
     string result;
     result.reserve(APLO_ESP8266_RPC_RESPONSE_MAX);
-
-    if (endpoint.tlsBufferSize == 0) {
-        if (WiFiClientSecure::probeMaxFragmentLength(host, endpoint.port, 1024)) {
-            endpoint.tlsBufferSize = 1024;
-        } else if (WiFiClientSecure::probeMaxFragmentLength(host, endpoint.port, 512)) {
-            endpoint.tlsBufferSize = 512;
-        } else {
-            endpoint.tlsBufferSize = -1;
-        }
-    }
-
-    if (endpoint.tlsBufferSize < 0) {
-        Serial.print("RPC host does not support ESP8266 TLS MFLN: ");
-        Serial.println(host);
-        return "";
-    }
-
+    // The standalone probe omits SNI. SNI-routed RPC endpoints can reject it
+    // even when the normal BearSSL handshake supports MFLN. Request 1024 and
+    // validate the negotiated result after the real hostname-aware connection.
+    if (endpoint.tlsBufferSize == 0) endpoint.tlsBufferSize = 1024;
     bool responseOverflow = false;
 #else
     string result;
@@ -355,6 +340,15 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
         client = nullptr;
         return "";
     }
+#if defined(ESP8266)
+    if (!client->getMFLNStatus()) {
+        Serial.print("RPC host did not negotiate ESP8266 TLS MFLN: ");
+        Serial.println(host);
+        client->stop();
+        client = nullptr;
+        return "";
+    }
+#endif
 
     char contentLength[24];
     snprintf(contentLength, sizeof(contentLength), "%lu", static_cast<unsigned long>(data->size()));

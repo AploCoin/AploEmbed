@@ -207,6 +207,13 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('#define USE_PRECOMPUTED_CP 0', options)
         self.assertIn('#define USE_PRECOMPUTED_CP 1', options)
 
+    def test_esp8266_tls_uses_sni_aware_mfln_handshake(self):
+        web3 = read('src/Web3.cpp')
+        esp8266_exec = web3[web3.index('#if defined(ESP8266)', web3.index('string Web3::exec')):web3.index('#else', web3.index('#if defined(ESP8266)', web3.index('string Web3::exec')))]
+        self.assertNotIn('probeMaxFragmentLength', esp8266_exec)
+        self.assertIn('endpoint.tlsBufferSize = 1024', esp8266_exec)
+        self.assertIn('client->getMFLNStatus()', web3)
+
     def test_wei_string_conversion_is_bounds_safe(self):
         util = read('src/Util.cpp')
         conversion = util[util.index('string Util::ConvertWeiToEthString'):util.index('string Util::ConvertEthToWei')]
