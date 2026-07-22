@@ -184,6 +184,23 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertNotIn('String hash', hot_loop)
         self.assertNotIn('string packed', hot_loop)
 
+    def test_esp8266_mining_serial_literals_stay_in_flash(self):
+        mining = read('examples/Aplo Mining/src/main.cpp')
+        self.assertNotIn('Serial.print("', mining)
+        self.assertNotIn('Serial.println("', mining)
+        self.assertIn('Serial.println(F("', mining)
+
+    def test_esp8266_mining_defers_web3_until_after_wifi(self):
+        mining = read('examples/Aplo Mining/src/main.cpp')
+        self.assertIn('#if defined(ESP8266)\nWeb3 *web3 = nullptr;', mining)
+        self.assertIn('static Web3 esp8266Web3Instance;', mining)
+        wifi_connect = mining.index('while (!connectWifi(')
+        web3_init = mining.index('static Web3 esp8266Web3Instance;')
+        self.assertLess(wifi_connect, web3_init)
+        self.assertIn('Heap before WiFi:', mining)
+        self.assertIn('Heap after WiFi:', mining)
+        self.assertIn('Heap after Web3:', mining)
+
     def test_wei_string_conversion_is_bounds_safe(self):
         util = read('src/Util.cpp')
         conversion = util[util.index('string Util::ConvertWeiToEthString'):util.index('string Util::ConvertEthToWei')]

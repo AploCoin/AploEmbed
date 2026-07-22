@@ -39,27 +39,27 @@ static void initWifiDiagnostics()
     wifiConnectedHandler = WiFi.onStationModeConnected(
         [](const WiFiEventStationModeConnected &event) {
             wifiStationAssociated = true;
-            Serial.print("\nESP8266 associated with AP on channel ");
+            Serial.print(F("\nESP8266 associated with AP on channel "));
             Serial.println(event.channel);
         });
     wifiDisconnectHandler = WiFi.onStationModeDisconnected(
         [](const WiFiEventStationModeDisconnected &event) {
             wifiStationAssociated = false;
             wifiGotIp = false;
-            Serial.print("\nWiFi disconnected from SSID=");
+            Serial.print(F("\nWiFi disconnected from SSID="));
             Serial.print(event.ssid);
-            Serial.print(", reason=");
+            Serial.print(F(", reason="));
             Serial.println(event.reason);
         });
     wifiGotIpHandler = WiFi.onStationModeGotIP(
         [](const WiFiEventStationModeGotIP &event) {
             wifiStationAssociated = true;
             wifiGotIp = true;
-            Serial.print("\nESP8266 DHCP address: ");
+            Serial.print(F("\nESP8266 DHCP address: "));
             Serial.println(event.ip);
         });
     wifiDhcpTimeoutHandler = WiFi.onStationModeDHCPTimeout([]() {
-        Serial.println("\nESP8266 DHCP timeout");
+        Serial.println(F("\nESP8266 DHCP timeout"));
     });
 #endif
 }
@@ -118,27 +118,27 @@ static bool connectWifiOnce(unsigned long timeoutMs)
 static bool connectWifi(uint8_t maxAttempts, unsigned long timeoutMs)
 {
     if (WiFi.status() == WL_CONNECTED) return true;
-    Serial.print("Connecting to WiFi on ");
+    Serial.print(F("Connecting to WiFi on "));
     Serial.print(boardName());
-    Serial.print(": ");
+    Serial.print(F(": "));
     Serial.println(ssid);
     for (uint8_t attempt = 1; attempt <= maxAttempts; ++attempt) {
-        Serial.print("WiFi attempt ");
+        Serial.print(F("WiFi attempt "));
         Serial.print(attempt);
         Serial.print('/');
         Serial.println(maxAttempts);
         if (connectWifiOnce(timeoutMs)) {
-            Serial.println("\nWiFi connected");
-            Serial.print("IP address: ");
+            Serial.println(F("\nWiFi connected"));
+            Serial.print(F("IP address: "));
             Serial.println(WiFi.localIP());
             lastWifiRetryMs = 0;
             return true;
         }
-        Serial.print("\nWiFi attempt failed. status=");
+        Serial.print(F("\nWiFi attempt failed. status="));
         Serial.println(WiFi.status());
         if (attempt < maxAttempts) delay(1000);
     }
-    Serial.println("WiFi connect failed after all attempts.");
+    Serial.println(F("WiFi connect failed after all attempts."));
     return false;
 }
 
@@ -149,7 +149,7 @@ static bool ensureWifiConnected(uint8_t maxAttempts, unsigned long timeoutMs,
     const unsigned long now = millis();
     if (lastWifiRetryMs != 0 && now - lastWifiRetryMs < retryDelayMs) return false;
     lastWifiRetryMs = now;
-    Serial.println("WiFi disconnected; pausing work and reconnecting...");
+    Serial.println(F("WiFi disconnected; pausing work and reconnecting..."));
     return connectWifi(maxAttempts, timeoutMs);
 }
 
@@ -212,10 +212,12 @@ string myAddress;
 #define WIFI_RECONNECT_ATTEMPTS 2
 #define WIFI_RETRY_DELAY_MS 5000
 
-// Construct before setup()/WiFi so ESP8266 BearSSL reserves its shared stack
-// thunk before the networking heap becomes fragmented.
+#if defined(ESP8266)
+Web3 *web3 = nullptr;
+#else
 Web3 web3Instance;
 Web3 *web3 = &web3Instance;
+#endif
 int wificounter = 0;
 
 
@@ -250,39 +252,54 @@ bool decodeAddress(const char *address, uint8_t output[20])
 void setup()
 {
     beginSerial();
-    Serial.println("\n\n=== AploEmbed Mining Example ===\n");
+    Serial.println(F("\n\n=== AploEmbed Mining Example ===\n"));
     initWifiDiagnostics();
 
+#if defined(ESP8266)
+    Serial.print(F("Heap before WiFi: "));
+    Serial.println(ESP.getFreeHeap());
+#endif
 
     while (!connectWifi(WIFI_CONNECT_ATTEMPTS, WIFI_ATTEMPT_TIMEOUT_MS)) {
-        Serial.println("WiFi unavailable during setup; retrying in 5 seconds...");
+        Serial.println(F("WiFi unavailable during setup; retrying in 5 seconds..."));
         delay(WIFI_RETRY_DELAY_MS);
     }
 
-    Serial.println("Web3 initialized with AploCoin RPC endpoints");
-    Serial.println("Primary: pub1.aplocoin.com");
-    Serial.println("Fallback: pub2.aplocoin.com");
-    Serial.println("TLS: auto root CA resolution enabled\n");
+#if defined(ESP8266)
+    Serial.print(F("Heap after WiFi: "));
+    Serial.println(ESP.getFreeHeap());
+    // Allocate the BearSSL secondary stack only after WiFi association/DHCP.
+    // This keeps ~6.2 KB available to the ESP8266 radio during connection.
+    static Web3 esp8266Web3Instance;
+    web3 = &esp8266Web3Instance;
+    Serial.print(F("Heap after Web3: "));
+    Serial.println(ESP.getFreeHeap());
+#endif
+
+    Serial.println(F("Web3 initialized with AploCoin RPC endpoints"));
+    Serial.println(F("Primary: pub1.aplocoin.com"));
+    Serial.println(F("Fallback: pub2.aplocoin.com"));
+    Serial.println(F("TLS: auto root CA resolution enabled\n"));
 
     myAddress = Crypto::PrivateKeyToAddress(PRIVATE_KEY);
 
-    Serial.print("Mining Contract: ");
+    Serial.print(F("Mining Contract: "));
     Serial.println(APLO_MINING_CONTRACT);
-    Serial.print("Staking Contract: ");
+    Serial.print(F("Staking Contract: "));
     Serial.println(APLO_STAKING_CONTRACT);
     Serial.println();
 
-    Serial.print("My Address: ");
+    Serial.print(F("My Address: "));
     Serial.println(myAddress.c_str());
     queryBalances(myAddress.c_str());
 
     // CRITICAL: Check staking status BEFORE attempting to mine
-    Serial.println("=== Checking Staking Status ===\n");
+    Serial.println(F("=== Checking Staking Status ===\n"));
     queryStakingStatus(myAddress.c_str());
 
-    Serial.println("\n=== Starting Mining Loop ===\n");
-    Serial.println("Mining will attempt to find valid nonces and submit transactions.");
-    Serial.println("Press RESET to stop.\n");
+    Serial.println(F("\n=== Starting Mining Loop ===\n"));
+    Serial.println(F("Mining will attempt to find valid nonces and submit transactions."));
+    Serial.println(F("Press RESET to stop.\n"));
 }
 
 void loop()
@@ -296,8 +313,8 @@ void loop()
     bool mined = attemptMining(myAddress.c_str());
 
     if (mined) {
-        Serial.println("\nMine transaction broadcast accepted; execution is not confirmed yet.");
-        Serial.println("Wait for a successful transaction receipt before treating the mine as complete.\n");
+        Serial.println(F("\nMine transaction broadcast accepted; execution is not confirmed yet."));
+        Serial.println(F("Wait for a successful transaction receipt before treating the mine as complete.\n"));
     }
 
     // Delay between mining cycles
@@ -310,13 +327,13 @@ void queryBalances(const char *address)
     string aploBalance = web3->AploGetAploBalanceString(&addr);
     string gasBalance = web3->AploGetGasBalanceString(&addr);
 
-    Serial.print("APLO Balance: ");
+    Serial.print(F("APLO Balance: "));
     Serial.print(aploBalance.c_str());
-    Serial.println(" APLO");
+    Serial.println(F(" APLO"));
 
-    Serial.print("Gas Balance (GAPLO): ");
+    Serial.print(F("Gas Balance (GAPLO): "));
     Serial.print(gasBalance.c_str());
-    Serial.println(" GAPLO\n");
+    Serial.println(F(" GAPLO\n"));
 }
 
 void queryStakingStatus(const char *address)
@@ -334,43 +351,43 @@ void queryStakingStatus(const char *address)
     uint32_t multiplierScaled = (uint32_t)multiplierRaw;
     double multiplier = multiplierScaled / 10.0;
 
-    Serial.print("Staked Amount: ");
+    Serial.print(F("Staked Amount: "));
     Serial.print(stakeAmount, 2);
-    Serial.println(" APLO");
+    Serial.println(F(" APLO"));
 
-    Serial.print("Mining Multiplier: ");
+    Serial.print(F("Mining Multiplier: "));
     Serial.print(multiplier, 1);
-    Serial.println("x");
+    Serial.println(F("x"));
 
     // Determine tier and display status
     if (stakeAmount < 1000.0) {
-        Serial.println("\nWARNING: Stake is below 1,000 APLO");
-        Serial.println("Mining reward is gated off at 0x multiplier.");
-        Serial.println("Stake at least 1,000 APLO to unlock the gas-based reward level.");
-        Serial.println("See 'Aplo Staking' example for staking instructions.\n");
+        Serial.println(F("\nWARNING: Stake is below 1,000 APLO"));
+        Serial.println(F("Mining reward is gated off at 0x multiplier."));
+        Serial.println(F("Stake at least 1,000 APLO to unlock the gas-based reward level."));
+        Serial.println(F("See 'Aplo Staking' example for staking instructions.\n"));
     } else if (stakeAmount < 2000.0) {
-        Serial.println("\nTier 1: gas-based mining reward at 1.0x multiplier");
-        Serial.println("Stake 2,000+ APLO to increase multiplier to 1.1x\n");
+        Serial.println(F("\nTier 1: gas-based mining reward at 1.0x multiplier"));
+        Serial.println(F("Stake 2,000+ APLO to increase multiplier to 1.1x\n"));
     } else if (stakeAmount < 8000.0) {
         uint32_t tier = (uint32_t)(stakeAmount / 1000.0);
-        Serial.print("\nTier ");
+        Serial.print(F("\nTier "));
         Serial.print(tier);
-        Serial.print(": gas-based mining reward at ");
+        Serial.print(F(": gas-based mining reward at "));
         Serial.print(multiplier, 1);
-        Serial.println("x multiplier");
+        Serial.println(F("x multiplier"));
 
         if (stakeAmount < 8000.0) {
             uint32_t nextTier = tier + 1;
             double nextMultiplier = (10.0 + nextTier) / 10.0;
-            Serial.print("Stake ");
+            Serial.print(F("Stake "));
             Serial.print(nextTier * 1000);
-            Serial.print("+ APLO to increase multiplier to ");
+            Serial.print(F("+ APLO to increase multiplier to "));
             Serial.print(nextMultiplier, 1);
-            Serial.println("x\n");
+            Serial.println(F("x\n"));
         }
     } else {
-        Serial.println("\nMAX TIER: gas-based mining reward at 1.7x multiplier (maximum)");
-        Serial.println("You have reached the highest staking tier!\n");
+        Serial.println(F("\nMAX TIER: gas-based mining reward at 1.7x multiplier (maximum)"));
+        Serial.println(F("You have reached the highest staking tier!\n"));
     }
 }
 
@@ -398,18 +415,18 @@ MinerParams getMinerParams(const char *address)
         Util::ConvertHexToBytes(params.totalMined, totalMinedHex.c_str(), 32);
         params.valid = true;
     } else {
-        Serial.println("ERROR: failed to read miner_params(address) from RPC.");
+        Serial.println(F("ERROR: failed to read miner_params(address) from RPC."));
         params.valid = false;
     }
 
-    Serial.println("Miner Parameters:");
-    Serial.print("  Last Block: ");
+    Serial.println(F("Miner Parameters:"));
+    Serial.print(F("  Last Block: "));
     Serial.println(params.lastBlock);
-    Serial.print("  Total Mined: ");
+    Serial.print(F("  Total Mined: "));
     Serial.println(Util::ConvertBytesToHex(params.totalMined, 32).c_str());
-    Serial.print("  Difficulty target: ");
+    Serial.print(F("  Difficulty target: "));
     Serial.println(Util::ConvertBytesToHex(params.currentDifficulty, 32).c_str());
-    Serial.println("  Note: lower target = harder mining; 0x00ff... is about 1 valid nonce per 256 random attempts.");
+    Serial.println(F("  Note: lower target = harder mining; 0x00ff... is about 1 valid nonce per 256 random attempts."));
 
     return params;
 }
@@ -418,32 +435,32 @@ bool attemptMining(const char *address)
 {
     MinerParams params = getMinerParams(address);
     if (!params.valid) {
-        Serial.println("Mining paused: RPC/miner params unavailable. Retrying next cycle.\n");
+        Serial.println(F("Mining paused: RPC/miner params unavailable. Retrying next cycle.\n"));
         return false;
     }
 
     int currentBlock = web3->EthBlockNumber();
     if (currentBlock <= 0) {
-        Serial.println("Mining paused: current block unavailable from RPC. Retrying next cycle.\n");
+        Serial.println(F("Mining paused: current block unavailable from RPC. Retrying next cycle.\n"));
         return false;
     }
 
-    Serial.print("Current Block: ");
+    Serial.print(F("Current Block: "));
     Serial.println(currentBlock);
 
     if (currentBlock - params.lastBlock < BLOCK_COOLDOWN) {
         uint32_t blocksRemaining = BLOCK_COOLDOWN - (currentBlock - params.lastBlock);
-        Serial.print("Cooldown active: ");
+        Serial.print(F("Cooldown active: "));
         Serial.print(blocksRemaining);
-        Serial.println(" blocks remaining");
+        Serial.println(F(" blocks remaining"));
         return false;
     }
 
-    Serial.println("Cooldown complete, attempting to mine...");
+    Serial.println(F("Cooldown complete, attempting to mine..."));
 
     uint8_t addressBytes[20];
     if (!decodeAddress(address, addressBytes)) {
-        Serial.println("Mining paused: invalid derived wallet address.");
+        Serial.println(F("Mining paused: invalid derived wallet address."));
         return false;
     }
 
@@ -453,26 +470,26 @@ bool attemptMining(const char *address)
         uint8_t nonce[32];
         uint8_t hash[32];
         if (!mineNonce(addressBytes, params, nonce, hash)) {
-            Serial.println("Mining paused: hardware CSPRNG unavailable.");
+            Serial.println(F("Mining paused: hardware CSPRNG unavailable."));
             return false;
         }
 
         if (memcmp(hash, params.currentDifficulty, 32) < 0) {
-            Serial.println("\n\nVALID NONCE FOUND!");
-            Serial.print("Nonce: ");
+            Serial.println(F("\n\nVALID NONCE FOUND!"));
+            Serial.print(F("Nonce: "));
             Serial.println(Util::ConvertBytesToHex(nonce, 32).c_str());
-            Serial.print("Hash: ");
+            Serial.print(F("Hash: "));
             Serial.println(Util::ConvertBytesToHex(hash, 32).c_str());
-            Serial.print("Difficulty target: ");
+            Serial.print(F("Difficulty target: "));
             Serial.println(Util::ConvertBytesToHex(params.currentDifficulty, 32).c_str());
             return submitMineTransaction(nonce);
         }
 
-        if (i % 10 == 0) Serial.print(".");
+        if (i % 10 == 0) Serial.print(F("."));
         if ((i & 0x3f) == 0) delay(0);
     }
 
-    Serial.println("\nNo valid nonce found in this cycle.");
+    Serial.println(F("\nNo valid nonce found in this cycle."));
     return false;
 }
 
@@ -493,7 +510,7 @@ bool mineNonce(const uint8_t address[20], const MinerParams &params,
 
 bool submitMineTransaction(const uint8_t nonce[32])
 {
-    Serial.println("\nSubmitting mine transaction...");
+    Serial.println(F("\nSubmitting mine transaction..."));
 
     string miningContractAddr = APLO_MINING_CONTRACT;
     string nonceStr = Util::ConvertBytesToHex(nonce, 32);
@@ -501,11 +518,11 @@ bool submitMineTransaction(const uint8_t nonce[32])
     string txHash = web3->AploMine(&miningContractAddr, &nonceStr, PRIVATE_KEY, &myAddr);
 
     if (txHash.empty() || txHash == "0x" || txHash == "0x0") {
-        Serial.println("Transaction failed!");
+        Serial.println(F("Transaction failed!"));
         return false;
     }
 
-    Serial.print("Transaction broadcast accepted: ");
+    Serial.print(F("Transaction broadcast accepted: "));
     Serial.println(txHash.c_str());
 
     return true;
