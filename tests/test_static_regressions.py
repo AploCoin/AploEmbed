@@ -259,6 +259,7 @@ class StaticRegressionTests(unittest.TestCase):
             self.assertIn('#if defined(ESP8266)', source)
             self.assertIn('onStationModeDisconnected', source)
             self.assertIn('wifiHandlerRegistered', source)
+            self.assertIn('WiFi.localIP() == IPAddress(static_cast<uint32_t>(0))', source)
             self.assertIn('WiFi.config(IPAddress(0U), IPAddress(0U), IPAddress(0U))', source)
             self.assertIn('45000UL', source)
             self.assertNotIn('WiFi.disconnect(false)', source)

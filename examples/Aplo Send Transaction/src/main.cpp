@@ -52,7 +52,7 @@ static bool connectWifi(unsigned long timeoutMs)
 #endif
     }
 
-    if (WiFi.status() != WL_CONNECTED) {
+    if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(static_cast<uint32_t>(0))) {
         Serial.print(F("WiFi failed, status="));
         Serial.println(WiFi.status());
         return false;

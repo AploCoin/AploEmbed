@@ -52,7 +52,7 @@ static bool connectWifi(unsigned long timeoutMs)
 #endif
     }
 
-    if (WiFi.status() != WL_CONNECTED) {
+    if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(static_cast<uint32_t>(0))) {
         Serial.print(F("WiFi failed, status="));
         Serial.println(WiFi.status());
         return false;
@@ -158,9 +158,7 @@ void loop()
         delay(CYCLE_DELAY_MS);
         return;
     }
-    bool mined = attemptMining(myAddress.c_str());
-
-    if (mined) Serial.println(F("Mine transaction submitted"));
+    attemptMining(myAddress.c_str());
     delay(CYCLE_DELAY_MS);
 }
 
@@ -185,29 +183,19 @@ void queryStakingStatus(const char *address)
     string stakingContractAddr = APLO_STAKING_CONTRACT;
     uint256_t stakeWei = web3->AploGetStake(&stakingContractAddr, &addr);
     string stakeAplo = Util::ConvertWeiToEthString(&stakeWei, 18);
-    double stakeAmount = atof(stakeAplo.c_str());
     uint256_t multiplierRaw = web3->AploGetStakeMultiplier(&stakingContractAddr, &addr);
     uint32_t multiplierScaled = (uint32_t)multiplierRaw;
-    double multiplier = multiplierScaled / 10.0;
 
     Serial.print(F("Staked Amount: "));
-    Serial.print(stakeAmount, 2);
+    Serial.print(stakeAplo.c_str());
     Serial.println(F(" APLO"));
 
     Serial.print(F("Mining Multiplier: "));
-    Serial.print(multiplier, 1);
-    Serial.println(F("x"));
-    if (stakeAmount < 1000.0) {
+    Serial.print(multiplierScaled / 10);
+    Serial.print('.');
+    Serial.println(multiplierScaled % 10);
+    if (stakeWei < Util::ConvertDecimalToWei("1000", 18)) {
         Serial.println(F("Stake below 1,000 APLO; mining rewards disabled"));
-    } else if (stakeAmount < 2000.0) {
-        Serial.println(F("Mining multiplier: 1.0x"));
-    } else if (stakeAmount < 8000.0) {
-        Serial.print(F("Mining multiplier: "));
-        Serial.print(multiplier, 1);
-        Serial.println(F("x"));
-
-    } else {
-        Serial.println(F("Mining multiplier: 1.7x"));
     }
 }
 
