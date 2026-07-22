@@ -1,12 +1,101 @@
 #include <Arduino.h>
 #include <AploPlatform.h>
-#include "ExampleWifi.h"
 #include <Web3.h>
 #include <AploContracts.h>
 #include <Util.h>
 #include <Crypto.h>
 
 using std::string;
+
+extern const char *ssid;
+extern const char *password;
+
+// WiFi handling is kept in this sketch so the example is directly reusable.
+#if defined(ESP8266)
+static WiFiEventHandler wifiDisconnectHandler;
+#endif
+
+static const char *boardName()
+{
+#if defined(ESP8266)
+    return "ESP8266";
+#elif defined(CONFIG_IDF_TARGET_ESP32C3)
+    return "ESP32-C3";
+#else
+    return "ESP32";
+#endif
+}
+
+static void initWifiDiagnostics()
+{
+#if defined(ESP8266)
+    wifiDisconnectHandler = WiFi.onStationModeDisconnected(
+        [](const WiFiEventStationModeDisconnected &event) {
+            Serial.print("\nWiFi disconnected from SSID=");
+            Serial.print(event.ssid);
+            Serial.print(", reason=");
+            Serial.println(event.reason);
+        });
+#endif
+}
+
+static bool connectWifiOnce(unsigned long timeoutMs)
+{
+    WiFi.persistent(false);
+    WiFi.setAutoReconnect(true);
+#if defined(ESP8266)
+    // Do not reset an association that may recover after transient reason=2.
+    WiFi.mode(WIFI_STA);
+    delay(100);
+    const unsigned long effectiveTimeout = timeoutMs < 45000UL ? 45000UL : timeoutMs;
+#elif defined(ESP32)
+    WiFi.disconnect(true, true);
+    WiFi.mode(WIFI_OFF);
+    delay(250);
+    WiFi.mode(WIFI_STA);
+    #if defined(CONFIG_IDF_TARGET_ESP32C3)
+    WiFi.setSleep(false);
+    #endif
+    const unsigned long effectiveTimeout = timeoutMs;
+#endif
+    WiFi.begin(ssid, password);
+    const unsigned long start = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - start < effectiveTimeout) {
+        delay(250);
+        Serial.print('.');
+#if defined(ESP8266)
+        yield();
+#endif
+    }
+    return WiFi.status() == WL_CONNECTED;
+}
+
+static bool connectWifi(uint8_t maxAttempts, unsigned long timeoutMs)
+{
+    if (WiFi.status() == WL_CONNECTED) return true;
+    Serial.print("Connecting to WiFi on ");
+    Serial.print(boardName());
+    Serial.print(": ");
+    Serial.println(ssid);
+    for (uint8_t attempt = 1; attempt <= maxAttempts; ++attempt) {
+        Serial.print("WiFi attempt ");
+        Serial.print(attempt);
+        Serial.print('/');
+        Serial.println(maxAttempts);
+        if (connectWifiOnce(timeoutMs)) {
+            Serial.println("\nWiFi connected");
+            Serial.print("IP address: ");
+            Serial.println(WiFi.localIP());
+            return true;
+        }
+        Serial.print("\nWiFi attempt failed. status=");
+        Serial.println(WiFi.status());
+        if (attempt < maxAttempts) delay(1000);
+    }
+    Serial.println("WiFi connect failed after all attempts.");
+    return false;
+}
+
 
 static void beginSerial()
 {
@@ -60,12 +149,13 @@ void stakeAplo(const char *aplo);
 void unstakeAplo();
 uint256_t queryBalance(const char *address);
 
-void AploStakingAppSetup()
+void setup()
 {
     beginSerial();
     Serial.println("\n\n=== AploEmbed Staking Example ===\n");
+    initWifiDiagnostics();
 
-    while (!exampleWifiConnect(ssid, password, 3, 20000)) {
+    while (!connectWifi(3, 20000)) {
         Serial.println("WiFi unavailable; retrying in 5 seconds...");
         delay(5000);
     }
@@ -138,7 +228,7 @@ void AploStakingAppSetup()
     }
 }
 
-void AploStakingAppLoop()
+void loop()
 {
     // Staking operations are done once in setup()
     // Add periodic status checks here if needed

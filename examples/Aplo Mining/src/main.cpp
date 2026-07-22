@@ -4,9 +4,110 @@
 #include <AploContracts.h>
 #include <Util.h>
 #include <Crypto.h>
-#include "ExampleWifi.h"
 
 using std::string;
+
+extern const char *ssid;
+extern const char *password;
+
+// WiFi handling is kept in this sketch so the example is directly reusable.
+#if defined(ESP8266)
+static WiFiEventHandler wifiDisconnectHandler;
+#endif
+static unsigned long lastWifiRetryMs = 0;
+
+static const char *boardName()
+{
+#if defined(ESP8266)
+    return "ESP8266";
+#elif defined(CONFIG_IDF_TARGET_ESP32C3)
+    return "ESP32-C3";
+#else
+    return "ESP32";
+#endif
+}
+
+static void initWifiDiagnostics()
+{
+#if defined(ESP8266)
+    wifiDisconnectHandler = WiFi.onStationModeDisconnected(
+        [](const WiFiEventStationModeDisconnected &event) {
+            Serial.print("\nWiFi disconnected from SSID=");
+            Serial.print(event.ssid);
+            Serial.print(", reason=");
+            Serial.println(event.reason);
+        });
+#endif
+}
+
+static bool connectWifiOnce(unsigned long timeoutMs)
+{
+    WiFi.persistent(false);
+    WiFi.setAutoReconnect(true);
+#if defined(ESP8266)
+    // Do not reset an association that may recover after transient reason=2.
+    WiFi.mode(WIFI_STA);
+    delay(100);
+    const unsigned long effectiveTimeout = timeoutMs < 45000UL ? 45000UL : timeoutMs;
+#elif defined(ESP32)
+    WiFi.disconnect(true, true);
+    WiFi.mode(WIFI_OFF);
+    delay(250);
+    WiFi.mode(WIFI_STA);
+    #if defined(CONFIG_IDF_TARGET_ESP32C3)
+    WiFi.setSleep(false);
+    #endif
+    const unsigned long effectiveTimeout = timeoutMs;
+#endif
+    WiFi.begin(ssid, password);
+    const unsigned long start = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - start < effectiveTimeout) {
+        delay(250);
+        Serial.print('.');
+#if defined(ESP8266)
+        yield();
+#endif
+    }
+    return WiFi.status() == WL_CONNECTED;
+}
+
+static bool connectWifi(uint8_t maxAttempts, unsigned long timeoutMs)
+{
+    if (WiFi.status() == WL_CONNECTED) return true;
+    Serial.print("Connecting to WiFi on ");
+    Serial.print(boardName());
+    Serial.print(": ");
+    Serial.println(ssid);
+    for (uint8_t attempt = 1; attempt <= maxAttempts; ++attempt) {
+        Serial.print("WiFi attempt ");
+        Serial.print(attempt);
+        Serial.print('/');
+        Serial.println(maxAttempts);
+        if (connectWifiOnce(timeoutMs)) {
+            Serial.println("\nWiFi connected");
+            Serial.print("IP address: ");
+            Serial.println(WiFi.localIP());
+            lastWifiRetryMs = 0;
+            return true;
+        }
+        Serial.print("\nWiFi attempt failed. status=");
+        Serial.println(WiFi.status());
+        if (attempt < maxAttempts) delay(1000);
+    }
+    Serial.println("WiFi connect failed after all attempts.");
+    return false;
+}
+
+static bool ensureWifiConnected(uint8_t maxAttempts, unsigned long timeoutMs,
+                                unsigned long retryDelayMs)
+{
+    if (WiFi.status() == WL_CONNECTED) return true;
+    const unsigned long now = millis();
+    if (lastWifiRetryMs != 0 && now - lastWifiRetryMs < retryDelayMs) return false;
+    lastWifiRetryMs = now;
+    Serial.println("WiFi disconnected; pausing work and reconnecting...");
+    return connectWifi(maxAttempts, timeoutMs);
+}
 
 static void beginSerial()
 {
@@ -72,7 +173,6 @@ string myAddress;
 Web3 web3Instance;
 Web3 *web3 = &web3Instance;
 int wificounter = 0;
-unsigned long lastWifiRetryMs = 0;
 
 
 // Mining state
@@ -103,13 +203,14 @@ bool decodeAddress(const char *address, uint8_t output[20])
     return true;
 }
 
-void AploMiningAppSetup()
+void setup()
 {
     beginSerial();
     Serial.println("\n\n=== AploEmbed Mining Example ===\n");
+    initWifiDiagnostics();
 
 
-    while (!exampleWifiConnect(ssid, password, WIFI_CONNECT_ATTEMPTS, WIFI_ATTEMPT_TIMEOUT_MS)) {
+    while (!connectWifi(WIFI_CONNECT_ATTEMPTS, WIFI_ATTEMPT_TIMEOUT_MS)) {
         Serial.println("WiFi unavailable during setup; retrying in 5 seconds...");
         delay(WIFI_RETRY_DELAY_MS);
     }
@@ -140,9 +241,9 @@ void AploMiningAppSetup()
     Serial.println("Press RESET to stop.\n");
 }
 
-void AploMiningAppLoop()
+void loop()
 {
-    if (!exampleWifiEnsureConnected(ssid, password, WIFI_RECONNECT_ATTEMPTS, WIFI_ATTEMPT_TIMEOUT_MS, WIFI_RETRY_DELAY_MS)) {
+    if (!ensureWifiConnected(WIFI_RECONNECT_ATTEMPTS, WIFI_ATTEMPT_TIMEOUT_MS, WIFI_RETRY_DELAY_MS)) {
         delay(CYCLE_DELAY_MS);
         return;
     }

@@ -151,7 +151,7 @@ class StaticRegressionTests(unittest.TestCase):
     def test_mining_hash_and_balance_regressions(self):
         util = read('src/Util.cpp')
         web3 = read('src/Web3.cpp')
-        mining = read('examples/common/src/AploMiningApp.cpp')
+        mining = read('examples/Aplo Mining/src/main.cpp')
         crypto_header = read('src/Crypto.h')
         crypto_impl = read('src/Crypto.cpp')
         self.assertIn('return ConvertBytesToHex(hash, 32);', util)
@@ -199,49 +199,54 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertNotIn('sprintf(', conversion)
         self.assertIn('snprintf(', conversion)
 
-    def test_examples_are_split_by_platform_with_shared_application_code(self):
-        board_dirs = {
-            'ESP32': ('espressif32', 'esp32dev'),
-            'ESP32-C3': ('espressif32', 'esp32-c3-devkitm-1'),
-            'ESP8266': ('espressif8266', 'esp12e'),
+    def test_examples_are_self_contained_and_use_github_dependency(self):
+        self.assertFalse((ROOT / 'examples' / 'common').exists())
+        expected_markers = {
+            'Aplo Mining': ['attemptMining', 'submitMineTransaction', 'WIFI_ATTEMPT_TIMEOUT_MS'],
+            'Aplo Balance Query': ['queryAploBalance', 'queryGaploBalance'],
+            'Aplo Send Transaction': ['sendAploToAddress', 'SEND_AMOUNT_APLO'],
+            'Aplo Staking': ['queryStakingStatus', 'stakeAplo', 'STAKE_AMOUNT_APLO'],
         }
+        for example, markers in expected_markers.items():
+            root = ROOT / 'examples' / example
+            self.assertTrue((root / 'platformio.ini').exists())
+            self.assertTrue((root / 'src' / 'main.cpp').exists())
+            ini = (root / 'platformio.ini').read_text()
+            self.assertIn('[env:esp32dev]', ini)
+            self.assertIn('[env:esp32-c3-devkitm-1]', ini)
+            self.assertIn('[env:esp12e]', ini)
+            self.assertIn('https://github.com/AploCoin/AploEmbed.git#master', ini)
+            self.assertNotIn('file://', ini)
+            source = (root / 'src' / 'main.cpp').read_text()
+            self.assertIn('void setup()', source)
+            self.assertIn('void loop()', source)
+            self.assertNotIn('AploExampleApps', source)
+            self.assertNotIn('BoardWifi.h', source)
+            for marker in markers:
+                self.assertIn(marker, source)
+
+    def test_platform_specific_wifi_stays_inside_each_example(self):
         for example in [
             'Aplo Mining',
             'Aplo Balance Query',
             'Aplo Send Transaction',
             'Aplo Staking',
         ]:
-            for board_dir, (platform, board) in board_dirs.items():
-                root = ROOT / 'examples' / example / board_dir
-                self.assertTrue((root / 'platformio.ini').exists())
-                self.assertTrue((root / 'src' / 'main.cpp').exists())
-                ini = (root / 'platformio.ini').read_text()
-                self.assertIn(f'platform = {platform}', ini)
-                self.assertIn(f'board = {board}', ini)
-                self.assertIn('file://../../..', ini)
-                main = (root / 'src' / 'main.cpp').read_text()
-                self.assertIn('BoardWifi.h', main)
-
-    def test_board_wifi_adapters_do_not_share_destructive_reset_logic(self):
-        esp8266 = read('examples/Aplo Mining/ESP8266/src/BoardWifi.h')
-        esp32 = read('examples/Aplo Mining/ESP32/src/BoardWifi.h')
-        esp32c3 = read('examples/Aplo Mining/ESP32-C3/src/BoardWifi.h')
-        self.assertNotIn('WiFi.disconnect(true)', esp8266)
-        self.assertNotIn('WIFI_OFF', esp8266)
-        self.assertIn('onStationModeDisconnected', esp8266)
-        self.assertIn('45000UL', esp8266)
-        self.assertNotIn('WiFi.disconnect(false)', esp8266)
-        self.assertIn('WiFi.disconnect(true, true)', esp32)
-        self.assertIn('WiFi.setSleep(false)', esp32c3)
+            source = read(f'examples/{example}/src/main.cpp')
+            self.assertIn('#if defined(ESP8266)', source)
+            self.assertIn('onStationModeDisconnected', source)
+            self.assertIn('45000UL', source)
+            self.assertNotIn('WiFi.disconnect(false)', source)
+            self.assertIn('#elif defined(ESP32)', source)
 
     def test_examples_do_not_allocate_web3_dynamically_or_hang_forever(self):
-        shared_sources = [
-            read('examples/common/src/AploBalanceApp.cpp'),
-            read('examples/common/src/AploSendTransactionApp.cpp'),
-            read('examples/common/src/AploStakingApp.cpp'),
-            read('examples/common/src/AploMiningApp.cpp'),
+        sources = [
+            read('examples/Aplo Balance Query/src/main.cpp'),
+            read('examples/Aplo Send Transaction/src/main.cpp'),
+            read('examples/Aplo Staking/src/main.cpp'),
+            read('examples/Aplo Mining/src/main.cpp'),
         ]
-        for source in shared_sources:
+        for source in sources:
             self.assertNotIn('new Web3', source)
             self.assertNotIn('while (WiFi.status() != WL_CONNECTED)', source)
 
@@ -283,11 +288,11 @@ class StaticRegressionTests(unittest.TestCase):
             'Aplo Send Transaction',
             'Aplo Staking',
         ]:
-            for board_dir in ['ESP32', 'ESP32-C3', 'ESP8266']:
-                project_dir = ROOT / 'examples' / example / board_dir
-                with self.subTest(example=example, board=board_dir):
+            project_dir = ROOT / 'examples' / example
+            for environment in ['esp32dev', 'esp32-c3-devkitm-1', 'esp12e']:
+                with self.subTest(example=example, environment=environment):
                     subprocess.run(
-                        ['uvx', '--from', 'platformio', 'platformio', 'run'],
+                        ['uvx', '--from', 'platformio', 'platformio', 'run', '-e', environment],
                         cwd=project_dir,
                         check=True,
                         timeout=600,
@@ -312,8 +317,8 @@ class StaticRegressionTests(unittest.TestCase):
     def test_money_examples_use_exact_decimal_strings(self):
         util_header = read('src/Util.h')
         util = read('src/Util.cpp')
-        send = read('examples/common/src/AploSendTransactionApp.cpp')
-        staking = read('examples/common/src/AploStakingApp.cpp')
+        send = read('examples/Aplo Send Transaction/src/main.cpp')
+        staking = read('examples/Aplo Staking/src/main.cpp')
         self.assertIn('ConvertDecimalToWei(const std::string& amount, int decimals)', util_header)
         self.assertIn('ConvertDecimalToWei(const string& amount, int decimals)', util)
         self.assertNotIn('ConvertToWei(aplo, 18)', send)
@@ -353,9 +358,9 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('PrivateKeyToPublic(privateKeyBytes, publicKey)', crypto_impl)
         self.assertIn('PublicKeyToAddress(publicKey, address)', crypto_impl)
         for rel in [
-            'examples/common/src/AploMiningApp.cpp',
-            'examples/common/src/AploSendTransactionApp.cpp',
-            'examples/common/src/AploStakingApp.cpp',
+            'examples/Aplo Mining/src/main.cpp',
+            'examples/Aplo Send Transaction/src/main.cpp',
+            'examples/Aplo Staking/src/main.cpp',
         ]:
             example = read(rel)
             self.assertNotIn('#define MY_ADDRESS', example)

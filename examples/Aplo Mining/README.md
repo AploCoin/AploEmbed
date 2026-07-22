@@ -47,7 +47,7 @@ The base reward is not calculated from the staked amount. In `core/state_transit
 Edit the shared application source:
 
 ```text
-examples/common/src/AploMiningApp.cpp
+examples/Aplo Mining/src/main.cpp
 ```
 
 ```cpp
@@ -63,13 +63,13 @@ Do not commit a real private key. The examples derive the sender address from `P
 ## Build
 
 ```bash
-cd "examples/Aplo Mining/ESP32"     # or ESP32-C3 / ESP8266
-platformio run
+cd "examples/Aplo Mining"
+platformio run -e esp32dev  # or esp32-c3-devkitm-1 / esp12e
 platformio run --target upload
 platformio device monitor
 ```
 
-Each board folder contains its own `platformio.ini` and `BoardWifi.h`. Mining/business logic remains in `examples/common/src/AploMiningApp.cpp`.
+This is a standalone example: `platformio.ini` selects ESP32, ESP32-C3, or ESP8266, and all mining plus board-specific WiFi logic is visible in `src/main.cpp`. AploEmbed is installed from GitHub by PlatformIO.
 
 ## Output
 

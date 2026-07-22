@@ -47,7 +47,7 @@ The staking system uses a tier-based multiplier system:
 
 ### 1. WiFi Credentials
 
-Edit `examples/common/src/AploStakingApp.cpp` and update:
+Edit `examples/Aplo Staking/src/main.cpp` and update:
 
 ```cpp
 const char *ssid = "<YOUR_SSID>";
@@ -99,10 +99,10 @@ web3 = new Web3("primary-rpc.aplocoin.com", "fallback-rpc.aplocoin.com");
 
 ```bash
 # Navigate to the example directory
-cd "examples/Aplo Staking/ESP32"  # or ESP32-C3 / ESP8266
+cd "examples/Aplo Staking"
 
 # Build the project
-pio run
+pio run -e esp32dev  # or esp32-c3-devkitm-1 / esp12e
 
 # Upload to board
 pio run --target upload
