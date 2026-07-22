@@ -10,56 +10,18 @@ using std::string;
 extern const char *ssid;
 extern const char *password;
 
-// WiFi handling is kept in this sketch so the example is directly reusable.
 #if defined(ESP8266)
-static WiFiEventHandler wifiConnectedHandler;
 static WiFiEventHandler wifiDisconnectHandler;
-static WiFiEventHandler wifiGotIpHandler;
-static WiFiEventHandler wifiDhcpTimeoutHandler;
-static volatile bool wifiStationAssociated = false;
-static volatile bool wifiGotIp = false;
-static const unsigned long ESP8266_WIFI_DHCP_TIMEOUT_MS = 60000UL;
 #endif
 
-static const char *boardName()
+static void initWifi()
 {
 #if defined(ESP8266)
-    return "ESP8266";
-#elif defined(CONFIG_IDF_TARGET_ESP32C3)
-    return "ESP32-C3";
-#else
-    return "ESP32";
-#endif
-}
-
-static void initWifiDiagnostics()
-{
-#if defined(ESP8266)
-    wifiConnectedHandler = WiFi.onStationModeConnected(
-        [](const WiFiEventStationModeConnected &event) {
-            wifiStationAssociated = true;
-            Serial.print("\nESP8266 associated with AP on channel ");
-            Serial.println(event.channel);
-        });
     wifiDisconnectHandler = WiFi.onStationModeDisconnected(
         [](const WiFiEventStationModeDisconnected &event) {
-            wifiStationAssociated = false;
-            wifiGotIp = false;
-            Serial.print("\nWiFi disconnected from SSID=");
-            Serial.print(event.ssid);
-            Serial.print(", reason=");
+            Serial.print(F("WiFi disconnected, reason="));
             Serial.println(event.reason);
         });
-    wifiGotIpHandler = WiFi.onStationModeGotIP(
-        [](const WiFiEventStationModeGotIP &event) {
-            wifiStationAssociated = true;
-            wifiGotIp = true;
-            Serial.print("\nESP8266 DHCP address: ");
-            Serial.println(event.ip);
-        });
-    wifiDhcpTimeoutHandler = WiFi.onStationModeDHCPTimeout([]() {
-        Serial.println("\nESP8266 DHCP timeout");
-    });
 #endif
 }
 
@@ -68,78 +30,49 @@ static bool connectWifiOnce(unsigned long timeoutMs)
     WiFi.persistent(false);
     WiFi.setAutoReconnect(true);
 #if defined(ESP8266)
-    // Force DHCP mode in case an earlier sketch left a stale static-IP config.
-    // Samsung may show the station as associated before DHCP has completed.
     WiFi.mode(WIFI_STA);
-    WiFi.config(IPAddress(0U), IPAddress(0U), IPAddress(0U));
-    wifiStationAssociated = false;
-    wifiGotIp = false;
-    delay(100);
+    WiFi.config(IPAddress(static_cast<uint32_t>(0)), IPAddress(static_cast<uint32_t>(0)), IPAddress(static_cast<uint32_t>(0)));
     const unsigned long effectiveTimeout = timeoutMs < 45000UL ? 45000UL : timeoutMs;
 #elif defined(ESP32)
     WiFi.disconnect(true, true);
     WiFi.mode(WIFI_OFF);
     delay(250);
     WiFi.mode(WIFI_STA);
-    #if defined(CONFIG_IDF_TARGET_ESP32C3)
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
     WiFi.setSleep(false);
-    #endif
+#endif
     const unsigned long effectiveTimeout = timeoutMs;
 #endif
+
     WiFi.begin(ssid, password);
-    const unsigned long start = millis();
+    const unsigned long startedAt = millis();
+    while (millis() - startedAt < effectiveTimeout) {
+        if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(static_cast<uint32_t>(0))) return true;
+        delay(250);
 #if defined(ESP8266)
-    unsigned long associatedAt = 0;
-    while (!wifiGotIp) {
-        if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0U)) {
-            wifiGotIp = true;
-            break;
-        }
-        if (wifiStationAssociated && associatedAt == 0) associatedAt = millis();
-        const unsigned long allowed = associatedAt == 0
-            ? effectiveTimeout
-            : effectiveTimeout + ESP8266_WIFI_DHCP_TIMEOUT_MS;
-        if (millis() - start >= allowed) break;
-        delay(250);
-        Serial.print('.');
         yield();
-    }
-    return wifiGotIp && WiFi.localIP() != IPAddress(0U);
-#else
-    while (WiFi.status() != WL_CONNECTED && millis() - start < effectiveTimeout) {
-        delay(250);
-        Serial.print('.');
-    }
-    return WiFi.status() == WL_CONNECTED;
 #endif
+    }
+    return false;
 }
 
 static bool connectWifi(uint8_t maxAttempts, unsigned long timeoutMs)
 {
-    if (WiFi.status() == WL_CONNECTED) return true;
-    Serial.print("Connecting to WiFi on ");
-    Serial.print(boardName());
-    Serial.print(": ");
-    Serial.println(ssid);
-    for (uint8_t attempt = 1; attempt <= maxAttempts; ++attempt) {
-        Serial.print("WiFi attempt ");
-        Serial.print(attempt);
-        Serial.print('/');
-        Serial.println(maxAttempts);
+    if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(static_cast<uint32_t>(0))) return true;
+
+    for (uint8_t attempt = 0; attempt < maxAttempts; ++attempt) {
         if (connectWifiOnce(timeoutMs)) {
-            Serial.println("\nWiFi connected");
-            Serial.print("IP address: ");
+            Serial.print(F("WiFi connected: "));
             Serial.println(WiFi.localIP());
             return true;
         }
-        Serial.print("\nWiFi attempt failed. status=");
-        Serial.println(WiFi.status());
-        if (attempt < maxAttempts) delay(1000);
+        if (attempt + 1 < maxAttempts) delay(1000);
     }
-    Serial.println("WiFi connect failed after all attempts.");
+
+    Serial.print(F("WiFi failed, status="));
+    Serial.println(WiFi.status());
     return false;
 }
-
 
 static void beginSerial()
 {
@@ -196,11 +129,11 @@ uint256_t queryBalance(const char *address);
 void setup()
 {
     beginSerial();
-    Serial.println("\n\n=== AploEmbed Staking Example ===\n");
-    initWifiDiagnostics();
+    Serial.println(F("\n\n=== AploEmbed Staking Example ===\n"));
+    initWifi();
 
     while (!connectWifi(3, 20000)) {
-        Serial.println("WiFi unavailable; retrying in 5 seconds...");
+        Serial.println(F("WiFi unavailable; retrying in 5 seconds..."));
         delay(5000);
     }
 
@@ -209,37 +142,24 @@ void setup()
     // Web3 auto-selects the bundled root CA for HTTPS RPC endpoints.
 
 
-    Serial.println("Web3 initialized with AploCoin RPC endpoints");
-    Serial.println("Primary: pub1.aplocoin.com");
-    Serial.println("Fallback: pub2.aplocoin.com");
-    Serial.println("TLS: auto root CA resolution enabled\n");
 
     myAddress = Crypto::PrivateKeyToAddress(PRIVATE_KEY);
 
-    Serial.print("Staking Contract: ");
-    Serial.println(APLO_STAKING_CONTRACT);
-    Serial.println();
-
     uint256_t balance = queryBalance(myAddress.c_str());
     string balanceText = Util::ConvertWeiToEthString(&balance, 18);
-    Serial.print("My Address: ");
+    Serial.print(F("My Address: "));
     Serial.println(myAddress.c_str());
-    Serial.print("Current Balance: ");
+    Serial.print(F("Current Balance: "));
     Serial.print(balanceText.c_str());
-    Serial.println(" APLO\n");
+    Serial.println(F(" APLO\n"));
 
     // Query current staking status BEFORE staking
-    Serial.println("=== Current Staking Status ===\n");
     queryStakingStatus(myAddress.c_str());
 
     const uint256_t stakeAmount = Util::ConvertDecimalToWei(STAKE_AMOUNT_APLO, 18);
     const uint256_t gasBuffer = Util::ConvertDecimalToWei("0.01", 18);
     const uint256_t requiredBalance = stakeAmount + gasBuffer;
 
-    Serial.print("\nAttempting to stake: ");
-    Serial.print(STAKE_AMOUNT_APLO);
-    Serial.println(" APLO");
-    Serial.println();
 
     // Safety check: ensure sufficient balance
     if (balance >= requiredBalance)
@@ -247,28 +167,27 @@ void setup()
         stakeAplo(STAKE_AMOUNT_APLO);
 
         // Query staking status AFTER staking to show the change
-        Serial.println("\n=== Updated Staking Status ===\n");
         queryStakingStatus(myAddress.c_str());
 
         // Uncomment to test unstaking (returns ALL staked APLO)
-        // Serial.println("\n=== Testing Unstake ===\n");
+        // Serial.println(F("\n=== Testing Unstake ===\n"));
         // unstakeAplo();
-        // Serial.println("\n=== Final Staking Status ===\n");
+        // Serial.println(F("\n=== Final Staking Status ===\n"));
         // queryStakingStatus(myAddress.c_str());
     }
     else
     {
-        Serial.println("ERROR: Insufficient balance!");
-        Serial.print("Required: ");
+        Serial.println(F("ERROR: Insufficient balance!"));
+        Serial.print(F("Required: "));
         string requiredText = Util::ConvertWeiToEthString(&requiredBalance, 18);
         Serial.print(requiredText.c_str());
-        Serial.print(" APLO (");
+        Serial.print(F(" APLO ("));
         Serial.print(STAKE_AMOUNT_APLO);
-        Serial.println(" + 0.01 gas buffer)");
-        Serial.print("Available: ");
+        Serial.println(F(" + 0.01 gas buffer)"));
+        Serial.print(F("Available: "));
         Serial.print(balanceText.c_str());
-        Serial.println(" APLO");
-        Serial.println("\nStaking aborted for safety.");
+        Serial.println(F(" APLO"));
+        Serial.println(F("\nStaking aborted for safety."));
     }
 }
 
@@ -295,8 +214,6 @@ uint256_t queryBalance(const char *address)
  */
 void queryStakingStatus(const char *address)
 {
-    Serial.println("--- Querying Staking Status ---");
-
     string addr = address;
     string stakingContract = APLO_STAKING_CONTRACT;
 
@@ -305,54 +222,29 @@ void queryStakingStatus(const char *address)
 
     // Convert to APLO for display
     string stakeStr = Util::ConvertWeiToEthString(&stakeGaplo, 18);
-    double stakeDbl = atof(stakeStr.c_str());
 
-    Serial.print("Address: ");
+    Serial.print(F("Address: "));
     Serial.println(address);
-    Serial.print("Current Stake: ");
+    Serial.print(F("Current Stake: "));
     Serial.print(stakeStr.c_str());
-    Serial.println(" APLO");
+    Serial.println(F(" APLO"));
 
     // Get mining reward multiplier (scaled by 10: 10 = 1.0x, 17 = 1.7x)
     uint256_t multiplierScaled = web3->AploGetStakeMultiplier(&stakingContract, &addr);
     int multiplierInt = static_cast<uint32_t>(multiplierScaled);
 
-    Serial.print("Mining Multiplier: ");
+    Serial.print(F("Mining Multiplier: "));
     if (multiplierInt == 0) {
-        Serial.println("0 (no rewards - stake below 1,000 APLO)");
+        Serial.println(F("0 (no rewards - stake below 1,000 APLO)"));
     } else {
         // Convert scaled multiplier to decimal (e.g., 10 → 1.0, 17 → 1.7)
         double multiplier = multiplierInt / 10.0;
         Serial.print(multiplier, 1);
-        Serial.print("x (");
+        Serial.print(F("x ("));
         Serial.print(multiplierInt);
-        Serial.println("/10)");
+        Serial.println(F("/10)"));
     }
 
-    // Show tier information
-    Serial.println("\nTier Information:");
-    if (stakeDbl < 1000.0) {
-        Serial.println("  Below minimum stake (1,000 APLO)");
-        Serial.println("  No Gaplo mining rewards");
-    } else if (stakeDbl < 2000.0) {
-        Serial.println("  Tier 1: 1,000-1,999 APLO → 1.0x multiplier");
-    } else if (stakeDbl < 3000.0) {
-        Serial.println("  Tier 2: 2,000-2,999 APLO → 1.1x multiplier");
-    } else if (stakeDbl < 4000.0) {
-        Serial.println("  Tier 3: 3,000-3,999 APLO → 1.2x multiplier");
-    } else if (stakeDbl < 5000.0) {
-        Serial.println("  Tier 4: 4,000-4,999 APLO → 1.3x multiplier");
-    } else if (stakeDbl < 6000.0) {
-        Serial.println("  Tier 5: 5,000-5,999 APLO → 1.4x multiplier");
-    } else if (stakeDbl < 7000.0) {
-        Serial.println("  Tier 6: 6,000-6,999 APLO → 1.5x multiplier");
-    } else if (stakeDbl < 8000.0) {
-        Serial.println("  Tier 7: 7,000-7,999 APLO → 1.6x multiplier");
-    } else {
-        Serial.println("  Tier 8 (MAX): 8,000+ APLO → 1.7x multiplier");
-    }
-
-    Serial.println();
 }
 
 /**
@@ -363,55 +255,26 @@ void queryStakingStatus(const char *address)
  */
 void stakeAplo(const char *aplo)
 {
-    Serial.println("--- Preparing Staking Transaction ---\n");
-
     // Convert APLO to Gaplo (wei) - 18 decimals
     uint256_t valueGaplo = Util::ConvertDecimalToWei(aplo, 18);
 
-    Serial.print("Stake Amount: ");
+    Serial.print(F("Stake Amount: "));
     Serial.print(aplo);
-    Serial.println(" APLO");
-    Serial.print("Amount in Gaplo (wei): ");
-    Serial.println(valueGaplo.str().c_str());
-    Serial.println();
-
-    Serial.println("Transaction Parameters:");
-    Serial.print("  From: ");
-    Serial.println(myAddress.c_str());
-    Serial.print("  To (Contract): ");
-    Serial.println(APLO_STAKING_CONTRACT);
-    Serial.print("  Value: ");
-    Serial.print(aplo);
-    Serial.println(" APLO (passed to stake(uint256), transaction value is 0)");
-    Serial.println();
-
+    Serial.println(F(" APLO"));
     // Call Web3::AploStake helper
     // This handles nonce retrieval, gas price, function encoding, signing, and submission
-    Serial.println("Signing and sending staking transaction...");
     string stakingContract = APLO_STAKING_CONTRACT;
     string myAddr = myAddress;
     string txHash = web3->AploStake(&stakingContract, &valueGaplo, PRIVATE_KEY, &myAddr);
 
-    Serial.println("\n--- Staking Transaction Result ---\n");
-
     if (txHash.length() > 0 && txHash != "0x")
     {
-        Serial.println("SUCCESS! Staking transaction sent.");
-        Serial.print("Transaction Hash: ");
+        Serial.print(F("Transaction Hash: "));
         Serial.println(txHash.c_str());
-        Serial.println();
-        Serial.println("Your APLO is now staked in the contract.");
-        Serial.println("Mining multiplier tier will be updated based on total stake; base reward still comes from gas spent.");
-        Serial.println("Use unstake() to retrieve your staked APLO.");
     }
     else
     {
-        Serial.println("ERROR: Staking transaction failed!");
-        Serial.println("Possible reasons:");
-        Serial.println("  - Insufficient balance for stake amount + gas");
-        Serial.println("  - Invalid contract address");
-        Serial.println("  - Network connectivity issues");
-        Serial.println("  - RPC endpoint unavailable");
+        Serial.println(F("ERROR: Staking transaction failed!"));
     }
 
     Serial.println();
@@ -425,44 +288,17 @@ void stakeAplo(const char *aplo)
  */
 void unstakeAplo()
 {
-    Serial.println("--- Preparing Unstaking Transaction ---\n");
-
-    Serial.println("Transaction Parameters:");
-    Serial.print("  From: ");
-    Serial.println(myAddress.c_str());
-    Serial.print("  To (Contract): ");
-    Serial.println(APLO_STAKING_CONTRACT);
-    Serial.println("  Value: 0 APLO (unstake returns staked APLO)");
-    Serial.println();
-
-    // Call Web3::AploUnstake helper
-    // This handles nonce retrieval, gas price, function encoding, signing, and submission
-    Serial.println("Signing and sending unstaking transaction...");
     string stakingContract = APLO_STAKING_CONTRACT;
     string myAddr = myAddress;
     string txHash = web3->AploUnstake(&stakingContract, PRIVATE_KEY, &myAddr);
 
-    Serial.println("\n--- Unstaking Transaction Result ---\n");
-
     if (txHash.length() > 0 && txHash != "0x")
     {
-        Serial.println("SUCCESS! Unstaking transaction sent.");
-        Serial.print("Transaction Hash: ");
+        Serial.print(F("Transaction Hash: "));
         Serial.println(txHash.c_str());
-        Serial.println();
-        Serial.println("Your staked APLO will be returned to your address.");
-        Serial.println("Mining multiplier will be reset to 0.");
-        Serial.println("You must stake again to receive Gaplo mining rewards.");
     }
     else
     {
-        Serial.println("ERROR: Unstaking transaction failed!");
-        Serial.println("Possible reasons:");
-        Serial.println("  - No APLO currently staked");
-        Serial.println("  - Insufficient gas");
-        Serial.println("  - Network connectivity issues");
-        Serial.println("  - RPC endpoint unavailable");
+        Serial.println(F("ERROR: Unstaking transaction failed!"));
     }
-
-    Serial.println();
 }
