@@ -38,7 +38,7 @@ This example demonstrates how to send APLO currency to another address using the
 
 ### 1. WiFi Credentials
 
-Edit `examples/common/src/AploSendTransactionApp.cpp` and set your local WiFi and wallet values:
+Edit `examples/Aplo Send Transaction/src/main.cpp` and set your local WiFi and wallet values:
 
 ```cpp
 const char *ssid = "<YOUR_SSID>";
@@ -82,8 +82,8 @@ Adjust gas settings if needed based on network conditions:
 ### Using PlatformIO (Recommended)
 
 ```bash
-cd "examples/Aplo Send Transaction/ESP32"  # or ESP32-C3 / ESP8266
-pio run
+cd "examples/Aplo Send Transaction"
+pio run -e esp32dev  # or esp32-c3-devkitm-1 / esp12e
 pio run --target upload
 pio device monitor
 ```

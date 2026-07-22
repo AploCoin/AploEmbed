@@ -12,13 +12,13 @@ Mining rewards are accounted in Gaplo. Staking locks APLO in the staking contrac
 - ESP32-C3
 - ESP8266
 
-ESP32, ESP32-C3, and ESP8266 have dedicated build folders inside each example. The application logic is shared, while `BoardWifi.h` keeps board-specific radio behavior isolated.
+Each example is a standalone PlatformIO project with complete application and WiFi code in `src/main.cpp`. Its `platformio.ini` contains ESP32, ESP32-C3, and ESP8266 environments and pulls AploEmbed from GitHub.
 
 For example, to build mining:
 
 ```bash
-cd "examples/Aplo Mining/ESP32"     # or ESP32-C3 / ESP8266
-platformio run
+cd "examples/Aplo Mining"
+platformio run -e esp32dev  # or esp32-c3-devkitm-1 / esp12e
 platformio run --target upload
 platformio device monitor
 ```
