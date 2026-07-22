@@ -73,6 +73,10 @@ Web3 *web3 = &web3Instance;
 int wificounter = 0;
 unsigned long lastWifiRetryMs = 0;
 
+#if defined(ESP8266)
+WiFiEventHandler wifiDisconnectHandler;
+#endif
+
 // Mining state
 struct MinerParams {
     uint32_t lastBlock;
@@ -108,6 +112,16 @@ void setup()
 {
     beginSerial();
     Serial.println("\n\n=== AploEmbed Mining Example ===\n");
+
+#if defined(ESP8266)
+    wifiDisconnectHandler = WiFi.onStationModeDisconnected(
+        [](const WiFiEventStationModeDisconnected &event) {
+            Serial.print("\nWiFi disconnected from SSID=");
+            Serial.print(event.ssid);
+            Serial.print(", reason=");
+            Serial.println(event.reason);
+        });
+#endif
 
     while (!setup_wifi()) {
         Serial.println("WiFi unavailable during setup; retrying in 5 seconds...");
@@ -169,14 +183,18 @@ void resetWiFiRadio()
     WiFi.setSleep(false);        // modem sleep can make ESP32-C3 association flaky on some routers
     WiFi.setAutoReconnect(true);
     WiFi.disconnect(true, true); // reset STA state and forget any cached AP config
-#else
-    WiFi.setAutoReconnect(true);
-    WiFi.disconnect(true);
-#endif
     WiFi.mode(WIFI_OFF);
     delay(500);
     WiFi.mode(WIFI_STA);
     delay(200);
+#else
+    // ESP8266 disconnect(true) turns the radio off and erases credentials. Repeating
+    // that destructive ESP32-style reset before every begin() can prevent association.
+    WiFi.setAutoReconnect(true);
+    WiFi.disconnect(false);
+    WiFi.mode(WIFI_STA);
+    delay(200);
+#endif
 }
 
 bool setup_wifi(uint8_t maxAttempts)
