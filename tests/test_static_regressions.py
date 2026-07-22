@@ -238,7 +238,7 @@ class StaticRegressionTests(unittest.TestCase):
             self.assertIn('[env:esp32dev]', ini)
             self.assertIn('[env:esp32-c3-devkitm-1]', ini)
             self.assertIn('[env:esp12e]', ini)
-            self.assertIn('https://github.com/AploCoin/AploEmbed.git#master', ini)
+            self.assertIn('https://github.com/AploCoin/AploEmbed.git#refactor/platform-specific-examples', ini)
             self.assertNotIn('file://', ini)
             source = (root / 'src' / 'main.cpp').read_text()
             self.assertIn('void setup()', source)
