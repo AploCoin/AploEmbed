@@ -23,7 +23,7 @@ AploCoin uses 18 decimal places:
 
 ### 1. WiFi Credentials
 
-Edit `main.cpp` and replace:
+Edit `examples/common/src/AploBalanceApp.cpp` and replace:
 
 ```cpp
 const char *ssid = "<YOUR_SSID>";
@@ -59,7 +59,8 @@ web3 = new Web3("primary-rpc.aplocoin.com", "fallback-rpc.aplocoin.com");
 ### Using PlatformIO
 
 ```bash
-cd "examples/Aplo Balance Query"
+cd "examples/Aplo Balance Query/ESP32"  # or ESP32-C3 / ESP8266
+pio run
 pio run --target upload
 pio device monitor
 ```
@@ -115,7 +116,7 @@ string balanceAplo = web3->AploGetBalanceInAplo(&address);
 string aplo = Util::ConvertWeiToEthString(&gaploAmount, 18);
 
 // Convert APLO to Gaplo (wei)
-uint256_t gaplo = Util::ConvertToWei(1234.56, 18);
+uint256_t gaplo = Util::ConvertDecimalToWei("1234.56", 18);
 ```
 
 ## Notes

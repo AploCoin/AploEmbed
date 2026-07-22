@@ -1,36 +1,54 @@
 {
-    "description": "AploEmbed - AploCoin blockchain interface for embedded devices running Arduino/ESP32. Provides balance queries, transactions, staking, and mining operations.", 
-    "repository": {
-        "url": "https://github.com/aplosdk/aploembed", 
-        "type": "git"
-    }, 
-    "platforms": [ 
-        "espressif32"
-    ], 
-    "authors": [
-        {
-            "maintainer": true, 
-            "name": "AploSDK Team", 
-            "url": "https://github.com/aplosdk"
-        },
-        {
-            "name": "James Brown (original author)", 
-            "url": "https://github.com/JamesSmartCell"
-        }
-    ], 
-    "frameworks": "arduino",
-    "keywords": [
-        "AploCoin",
-        "AploEmbed",
-        "Blockchain",
-        "Embedded",
-        "ESP32",
-        "Arduino",
-        "RPC",
-        "Staking",
-        "Mining"
+  "name": "AploEmbed",
+  "version": "0.0.1",
+  "description": "AploCoin blockchain interface for embedded Arduino devices.",
+  "keywords": [
+    "AploCoin",
+    "AploEmbed",
+    "Blockchain",
+    "Embedded",
+    "ESP32",
+    "ESP8266",
+    "Arduino",
+    "RPC",
+    "Staking",
+    "Mining"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AploCoin/AploEmbed.git"
+  },
+  "authors": [
+    {
+      "name": "AploSDK Team",
+      "url": "https://github.com/AploCoin",
+      "maintainer": true
+    },
+    {
+      "name": "James Brown (original author)",
+      "url": "https://github.com/JamesSmartCell"
+    }
+  ],
+  "frameworks": "arduino",
+  "platforms": [
+    "espressif32",
+    "espressif8266"
+  ],
+  "export": {
+    "include": [
+      "src",
+      "examples",
+      "docs",
+      "README.md",
+      "library.json",
+      "library.properties",
+      "keywords.txt",
+      "LICENSE"
     ],
-    "name": "AploEmbed", 
-    "version": "0.0.1", 
-    "homepage": "https://aplocoin.com/"
+    "exclude": [
+      "examples/**/.pio",
+      "examples/**/.pio/**"
+    ]
+  },
+  "homepage": "https://aplocoin.com/"
 }

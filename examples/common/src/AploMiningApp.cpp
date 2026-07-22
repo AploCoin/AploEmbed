@@ -4,6 +4,7 @@
 #include <AploContracts.h>
 #include <Util.h>
 #include <Crypto.h>
+#include "ExampleWifi.h"
 
 using std::string;
 
@@ -62,7 +63,7 @@ string myAddress;
 
 // WiFi reconnect parameters
 #define WIFI_CONNECT_ATTEMPTS 3
-#define WIFI_ATTEMPT_TIMEOUT_MS 12000
+#define WIFI_ATTEMPT_TIMEOUT_MS 45000
 #define WIFI_RECONNECT_ATTEMPTS 2
 #define WIFI_RETRY_DELAY_MS 5000
 
@@ -73,9 +74,6 @@ Web3 *web3 = &web3Instance;
 int wificounter = 0;
 unsigned long lastWifiRetryMs = 0;
 
-#if defined(ESP8266)
-WiFiEventHandler wifiDisconnectHandler;
-#endif
 
 // Mining state
 struct MinerParams {
@@ -86,9 +84,6 @@ struct MinerParams {
     bool valid;
 };
 
-bool setup_wifi(uint8_t maxAttempts = WIFI_CONNECT_ATTEMPTS);
-bool ensureWiFiConnected();
-void resetWiFiRadio();
 void queryStakingStatus(const char *address);
 MinerParams getMinerParams(const char *address);
 bool attemptMining(const char *address);
@@ -108,22 +103,13 @@ bool decodeAddress(const char *address, uint8_t output[20])
     return true;
 }
 
-void setup()
+void AploMiningAppSetup()
 {
     beginSerial();
     Serial.println("\n\n=== AploEmbed Mining Example ===\n");
 
-#if defined(ESP8266)
-    wifiDisconnectHandler = WiFi.onStationModeDisconnected(
-        [](const WiFiEventStationModeDisconnected &event) {
-            Serial.print("\nWiFi disconnected from SSID=");
-            Serial.print(event.ssid);
-            Serial.print(", reason=");
-            Serial.println(event.reason);
-        });
-#endif
 
-    while (!setup_wifi()) {
+    while (!exampleWifiConnect(ssid, password, WIFI_CONNECT_ATTEMPTS, WIFI_ATTEMPT_TIMEOUT_MS)) {
         Serial.println("WiFi unavailable during setup; retrying in 5 seconds...");
         delay(WIFI_RETRY_DELAY_MS);
     }
@@ -154,9 +140,9 @@ void setup()
     Serial.println("Press RESET to stop.\n");
 }
 
-void loop()
+void AploMiningAppLoop()
 {
-    if (!ensureWiFiConnected()) {
+    if (!exampleWifiEnsureConnected(ssid, password, WIFI_RECONNECT_ATTEMPTS, WIFI_ATTEMPT_TIMEOUT_MS, WIFI_RETRY_DELAY_MS)) {
         delay(CYCLE_DELAY_MS);
         return;
     }
@@ -165,109 +151,12 @@ void loop()
     bool mined = attemptMining(myAddress.c_str());
 
     if (mined) {
-        Serial.println("\nSuccessfully mined and submitted transaction!");
-        Serial.println("Waiting for block cooldown before next attempt...\n");
-
-        // Update balances after successful mine
-        queryBalances(myAddress.c_str());
+        Serial.println("\nMine transaction broadcast accepted; execution is not confirmed yet.");
+        Serial.println("Wait for a successful transaction receipt before treating the mine as complete.\n");
     }
 
     // Delay between mining cycles
     delay(CYCLE_DELAY_MS);
-}
-
-void resetWiFiRadio()
-{
-    WiFi.persistent(false);
-#if defined(ESP32)
-    WiFi.setSleep(false);        // modem sleep can make ESP32-C3 association flaky on some routers
-    WiFi.setAutoReconnect(true);
-    WiFi.disconnect(true, true); // reset STA state and forget any cached AP config
-    WiFi.mode(WIFI_OFF);
-    delay(500);
-    WiFi.mode(WIFI_STA);
-    delay(200);
-#else
-    // ESP8266 disconnect(true) turns the radio off and erases credentials. Repeating
-    // that destructive ESP32-style reset before every begin() can prevent association.
-    WiFi.setAutoReconnect(true);
-    WiFi.disconnect(false);
-    WiFi.mode(WIFI_STA);
-    delay(200);
-#endif
-}
-
-bool setup_wifi(uint8_t maxAttempts)
-{
-    if (WiFi.status() == WL_CONNECTED) {
-        return true;
-    }
-
-    Serial.print("Connecting to WiFi: ");
-    Serial.println(ssid);
-
-    for (uint8_t attempt = 1; attempt <= maxAttempts; attempt++) {
-        Serial.print("WiFi attempt ");
-        Serial.print(attempt);
-        Serial.print("/");
-        Serial.println(maxAttempts);
-
-        resetWiFiRadio();
-        WiFi.begin(ssid, password);
-
-        const unsigned long startMs = millis();
-        wificounter = 0;
-        while (WiFi.status() != WL_CONNECTED && millis() - startMs < WIFI_ATTEMPT_TIMEOUT_MS) {
-            delay(500);
-            Serial.print(".");
-            wificounter++;
-        }
-
-        if (WiFi.status() == WL_CONNECTED) {
-            Serial.println("\nWiFi connected");
-            Serial.print("IP address: ");
-            Serial.println(WiFi.localIP());
-            Serial.println();
-            return true;
-        }
-
-        Serial.print("\nWiFi attempt failed. status=");
-        Serial.println(WiFi.status());
-        if (attempt < maxAttempts) {
-            Serial.println("Resetting WiFi radio and retrying...");
-            delay(1000);
-        }
-    }
-
-    Serial.println("WiFi connect failed after all attempts.");
-    Serial.println("Check SSID/password, 2.4 GHz network, router MAC filters, WPA mode, and signal strength.");
-    return false;
-}
-
-bool ensureWiFiConnected()
-{
-    if (WiFi.status() == WL_CONNECTED) {
-        return true;
-    }
-
-    const unsigned long now = millis();
-    if (lastWifiRetryMs != 0 && now - lastWifiRetryMs < WIFI_RETRY_DELAY_MS) {
-        return false;
-    }
-    lastWifiRetryMs = now;
-
-    Serial.print("\nWiFi disconnected. status=");
-    Serial.println(WiFi.status());
-    Serial.println("Pausing mining and reconnecting automatically...");
-
-    if (setup_wifi(WIFI_RECONNECT_ATTEMPTS)) {
-        Serial.println("WiFi reconnected; resuming mining.\n");
-        lastWifiRetryMs = 0;
-        return true;
-    }
-
-    Serial.println("Reconnect failed; will retry automatically.\n");
-    return false;
 }
 
 void queryBalances(const char *address)
@@ -471,7 +360,7 @@ bool submitMineTransaction(const uint8_t nonce[32])
         return false;
     }
 
-    Serial.print("Transaction submitted: ");
+    Serial.print("Transaction broadcast accepted: ");
     Serial.println(txHash.c_str());
 
     return true;

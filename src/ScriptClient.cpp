@@ -64,12 +64,15 @@ void ScriptClient::scanAPI(const char *route, APICallback callback)
     apiReturn->clear();
 
 	size_t parseIndex = sc_data->find(route);
-    size_t endParseIndex = sc_data->find(" HTTP/");
-	if (endParseIndex == std::string::npos) endParseIndex = sc_data->find(" HTTPS/");
-	sc_data->erase(endParseIndex, sc_data->size() - endParseIndex);
+    if (parseIndex == std::string::npos) return;
+
+    size_t endParseIndex = sc_data->find(" HTTP/", parseIndex);
+	if (endParseIndex == std::string::npos) endParseIndex = sc_data->find(" HTTPS/", parseIndex);
+    if (endParseIndex == std::string::npos || endParseIndex < parseIndex) return;
+
+	sc_data->erase(endParseIndex);
 	parseIndex += strlen(route);
 
-	if (parseIndex != std::string::npos)
 	{
 		size_t routeNameIndex = sc_data->find_first_of("?", parseIndex);
         if (routeNameIndex == std::string::npos) routeNameIndex = sc_data->size();

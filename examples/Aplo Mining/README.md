@@ -44,7 +44,11 @@ The base reward is not calculated from the staked amount. In `core/state_transit
 
 ## Configuration
 
-Edit `main.cpp`:
+Edit the shared application source:
+
+```text
+examples/common/src/AploMiningApp.cpp
+```
 
 ```cpp
 const char *ssid = "YourNetworkName";
@@ -59,13 +63,13 @@ Do not commit a real private key. The examples derive the sender address from `P
 ## Build
 
 ```bash
-cd "examples/Aplo Mining"
+cd "examples/Aplo Mining/ESP32"     # or ESP32-C3 / ESP8266
 platformio run
 platformio run --target upload
 platformio device monitor
 ```
 
-For ESP32-C3 serial settings, see `../../docs/platforms.md`.
+Each board folder contains its own `platformio.ini` and `BoardWifi.h`. Mining/business logic remains in `examples/common/src/AploMiningApp.cpp`.
 
 ## Output
 

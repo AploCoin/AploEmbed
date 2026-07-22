@@ -38,7 +38,7 @@ This example demonstrates how to send APLO currency to another address using the
 
 ### 1. WiFi Credentials
 
-Edit `main.cpp` and set your local WiFi and wallet values:
+Edit `examples/common/src/AploSendTransactionApp.cpp` and set your local WiFi and wallet values:
 
 ```cpp
 const char *ssid = "<YOUR_SSID>";
@@ -65,7 +65,7 @@ const char *PRIVATE_KEY = "your_64_character_hex_private_key_here";
 Adjust the send amount (default is 0.01 APLO for safety):
 
 ```cpp
-#define SEND_AMOUNT_APLO 0.01  // Start small for testing
+#define SEND_AMOUNT_APLO "0.01"  // Exact decimal string; start small for testing
 ```
 
 ### 4. Gas Parameters (Optional)
@@ -82,7 +82,8 @@ Adjust gas settings if needed based on network conditions:
 ### Using PlatformIO (Recommended)
 
 ```bash
-cd "examples/Aplo Send Transaction"
+cd "examples/Aplo Send Transaction/ESP32"  # or ESP32-C3 / ESP8266
+pio run
 pio run --target upload
 pio device monitor
 ```
@@ -194,12 +195,12 @@ string address = "0x...";
 uint256_t balance = web3->AploGetBalance(&address);
 ```
 
-#### `Util::ConvertToWei(amount, decimals)`
+#### `Util::ConvertDecimalToWei(amount, decimals)`
 Converts human-readable amount to wei.
 
 ```cpp
 // Convert 0.01 APLO to Gaplo (wei)
-uint256_t wei = Util::ConvertToWei(0.01, 18);
+uint256_t wei = Util::ConvertDecimalToWei("0.01", 18);
 ```
 
 #### `Util::ConvertWeiToEthString(wei, decimals)`
@@ -328,7 +329,7 @@ delay(15000);  // Wait ~15 seconds for block confirmation
 
 - **Aplo Balance Query** - Query APLO and Gaplo balances
 - **Contract Interaction** - Call smart contract functions (coming soon)
-- **Staking Operations** - Stake/unstake APLO (coming soon)
+- **Aplo Staking** - Stake and unstake APLO
 
 ## Support
 

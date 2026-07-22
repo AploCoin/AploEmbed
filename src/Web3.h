@@ -22,10 +22,6 @@ class KeyID;
 #include "stdint.h"
 #include "uint256/uint256_t.h"
 #include "AploPlatform.h"
-#include <Contract.h>
-#include <Crypto.h>
-#include <KeyID.h>
-#include <Util.h>
 #include <string.h>
 #include <string>
 #include "AploContracts.h"

@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <cctype>
+#include <algorithm>
 #include <vector>
 
 using std::string;
@@ -129,7 +130,8 @@ uint32_t Util::RlpEncodeItem(uint8_t* output, const uint8_t* input, uint32_t inp
 
 vector<uint8_t> Util::RlpEncodeItemWithVector(const vector<uint8_t>& input) {
     vector<uint8_t> output;
-    uint16_t input_len = input.size();
+    size_t input_len = input.size();
+    if (input_len > 0xffffffffUL) return output;
     output.reserve(input_len + 5);
 
     if (input_len==1 && input[0] == 0x00) {
@@ -296,30 +298,26 @@ string Util::ConvertIntegerToBytes(const int32_t value)
 
 string Util::PlainVectorToString(const vector<uint8_t> *buf)
 {
-	char *buffer = (char*) alloca(buf->size() * 2 + 1);
-	char *pout = buffer;
-	for (int i = 0; i < buf->size(); i++)
-	{
-		*pout++ = _aploembed_hexStr[((*buf)[i] >> 4) & 0xF];
-		*pout++ = _aploembed_hexStr[(*buf)[i] & 0xF];
-	}
-	*pout = 0;
-	return string(buffer);
+    if (buf == nullptr) return "";
+    string output;
+    output.reserve(buf->size() * 2);
+    for (size_t i = 0; i < buf->size(); ++i) {
+        output += _aploembed_hexStr[((*buf)[i] >> 4) & 0xF];
+        output += _aploembed_hexStr[(*buf)[i] & 0xF];
+    }
+    return output;
 }
 
 string Util::ConvertBytesToHex(const uint8_t *bytes, int length)
 {
-    char *buffer = (char*)alloca(length * 2 + 3);
-    char *pout = buffer;
-    *pout++ = '0';
-    *pout++ = 'x';
-    for (int i = 0; i < length; i++)
-    {
-        *pout++ = _aploembed_hexStr[((bytes)[i] >> 4) & 0xF];
-        *pout++ = _aploembed_hexStr[(bytes)[i] & 0xF];
+    if (bytes == nullptr || length < 0) return "";
+    string output = "0x";
+    output.reserve(static_cast<size_t>(length) * 2 + 2);
+    for (int i = 0; i < length; ++i) {
+        output += _aploembed_hexStr[(bytes[i] >> 4) & 0xF];
+        output += _aploembed_hexStr[bytes[i] & 0xF];
     }
-    *pout = 0;
-    return std::string(buffer);
+    return output;
 }
 
 void Util::ConvertHexToBytes(uint8_t *_dst, const char *_src, int length)
@@ -337,145 +335,42 @@ void Util::ConvertHexToBytes(uint8_t *_dst, const char *_src, int length)
 
 string Util::ConvertBase(int from, int to, const char *s)
 {
-	if (s == NULL)
-		return NULL;
+    if (s == nullptr || from < 2 || from > 36 || to < 2 || to > 36) return "";
+    if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) s += 2;
 
-	if (from < 2 || from > 36 || to < 2 || to > 36) { return NULL; }
+    const size_t length = strlen(s);
+    if (length == 0 || length > 1024) return "";
 
-	if (s[0] == '0' && s[1] == 'x') s += 2;
+    vector<uint8_t> digits;
+    digits.reserve(length);
+    for (size_t i = 0; i < length; ++i) {
+        int digit = -1;
+        if (s[i] >= '0' && s[i] <= '9') digit = s[i] - '0';
+        else if (s[i] >= 'A' && s[i] <= 'Z') digit = 10 + s[i] - 'A';
+        else if (s[i] >= 'a' && s[i] <= 'z') digit = 10 + s[i] - 'a';
+        if (digit < 0 || digit >= from) return "";
+        digits.push_back(static_cast<uint8_t>(digit));
+    }
 
-	int il = strlen(s);
+    string output;
+    output.reserve(length + 1);
+    size_t first = 0;
+    while (first < digits.size()) {
+        unsigned remainder = 0;
+        for (size_t i = first; i < digits.size(); ++i) {
+            const unsigned value = remainder * static_cast<unsigned>(from) + digits[i];
+            digits[i] = static_cast<uint8_t>(value / static_cast<unsigned>(to));
+            remainder = value % static_cast<unsigned>(to);
+        }
+        output += (remainder < 10)
+            ? static_cast<char>('0' + remainder)
+            : static_cast<char>('A' + remainder - 10);
+        while (first < digits.size() && digits[first] == 0) ++first;
+    }
 
-	int *fs = new (alloca(sizeof(int)*il)) int[il];
-	int k = 0;
-	int i, j;
-
-	for (i = il - 1; i >= 0; i--)
-	{
-		if (s[i] >= '0' && s[i] <= '9')
-		{
-			fs[k] = (int)(s[i] - '0');
-		}
-		else
-		{
-			if (s[i] >= 'A' && s[i] <= 'Z')
-			{
-				fs[k] = 10 + (int)(s[i] - 'A');
-			}
-			else if (s[i] >= 'a' && s[i] <= 'z')
-			{
-				fs[k] = 10 + (int)(s[i] - 'a');
-			}
-			else
-			{
-				return NULL;
-			} //only allow 0-9 A-Z characters
-		}
-		k++;
-	}
-
-	for (i = 0; i<il; i++)
-	{
-		if (fs[i] >= from)
-			return NULL;
-	}
-
-	double x = ceil(log(from) / log(to));
-	int ol = 1 + (il * x);
-
-	int *ts = new (alloca(sizeof(int)*ol)) int[ol];
-	int *cums = new (alloca(sizeof(int)*ol)) int[ol];
-
-	for (i = 0; i<ol; i++)
-	{
-		ts[i] = 0;
-		cums[i] = 0;
-	}
-	ts[0] = 1;
-
-	//evaluate the output
-	for (i = 0; i < il; i++) //for each input digit
-	{
-		for (j = 0; j < ol; j++) //add the input digit times (base:to from^i) to the output cumulator
-		{
-			cums[j] += ts[j] * fs[i];
-			int temp = cums[j];
-			int rem = 0;
-			int ip = j;
-			do // fix up any remainders in base:to
-			{
-				rem = temp / to;
-				cums[ip] = temp - rem * to;
-				ip++;
-				if (ip >= ol)
-				{
-					if (rem > 0)
-					{
-						return NULL;
-					}
-					break;
-				}
-				cums[ip] += rem;
-				temp = cums[ip];
-			} while (temp >= to);
-		}
-
-		for (j = 0; j < ol; j++)
-		{
-			ts[j] = ts[j] * from;
-		}
-
-		for (j = 0; j < ol; j++) //check for any remainders
-		{
-			int temp = ts[j];
-			int rem = 0;
-			int ip = j;
-			do  //fix up any remainders
-			{
-				rem = temp / to;
-				ts[ip] = temp - rem * to;
-				ip++;
-				if (ip >= ol)
-				{
-					if (rem > 0)
-					{
-						return NULL;
-					}
-					break;
-				}
-				ts[ip] += rem;
-				temp = ts[ip];
-			} while (temp >= to);
-		}
-	}
-
-	char *out = (char*)alloca(sizeof(char) * (ol + 1));
-
-	int spos = 0;
-	bool first = false; //leading zero flag
-	for (i = ol - 1; i >= 0; i--)
-	{
-		if (cums[i] != 0)
-		{
-			first = true;
-		}
-		if (!first)
-		{
-			continue;
-		}
-
-		if (cums[i] < 10)
-		{
-			out[spos] = (char)(cums[i] + '0');
-		}
-		else
-		{
-			out[spos] = (char)(cums[i] + 'A' - 10);
-		}
-		spos++;
-	}
-	out[spos] = 0;
-    return string(out);
+    if (output.empty()) return "0";
+    std::reverse(output.begin(), output.end());
+    return output;
 }
 
 string Util::ConvertDecimal(int decimals, string *result)
@@ -584,12 +479,16 @@ vector<string>* Util::ConvertResultToArray(string *value)
 
 vector<string>* Util::ConvertStringHexToABIArray(string *result)
 {
-    int startIndex = 0;
     vector<string> *retVal = new vector<string>();
-    if (result->at(0) == 'x') startIndex = 1;
-    else if (result->at(1) == 'x') startIndex = 2;
+    if (result == nullptr || result->empty()) return retVal;
 
-    int resultLength = result->length();
+    size_t startIndex = 0;
+    if (result->length() >= 2 && result->at(0) == '0' &&
+        (result->at(1) == 'x' || result->at(1) == 'X')) {
+        startIndex = 2;
+    }
+
+    const size_t resultLength = result->length();
 
     while (startIndex < resultLength)
     {
@@ -678,52 +577,76 @@ void Util::PadForward(string *target, int targetSize)
 
 uint256_t Util::ConvertToWei(double val, int decimals)
 {
-    char buffer[36]; //allow extra 4 chars for gcvt
+    char buffer[48];
     if (val < 0) val = 0;
-    val *= pow(10.0, decimals);
-    sprintf(buffer, "%f", val);
-    std::string weiStr = std::string(buffer);
-    std::size_t index = weiStr.find_last_of('.');
-    if (index != std::string::npos) weiStr = weiStr.substr(0, index);
-    weiStr = ConvertBase(10, 16, weiStr.c_str());
-    return uint256_t(weiStr.c_str());
+    if (decimals < 0) decimals = 0;
+    if (decimals > 18) decimals = 18;
+    const double scaled = val * pow(10.0, decimals);
+    snprintf(buffer, sizeof(buffer), "%.0f", scaled);
+    const string weiHex = ConvertBase(10, 16, buffer);
+    return uint256_t(weiHex.c_str());
 }
 
-string Util::ConvertWeiToEthString(uint256_t *weiVal, int decimals)
+uint256_t Util::ConvertDecimalToWei(const string& amount, int decimals)
 {
-	char buffer[65];
-	vector<uint8_t> bytes = weiVal->export_bits_truncate();
-	string hex = ConvertBytesToHex(bytes.data(), bytes.size());
-	string amount = ConvertBase(16, 10, hex.c_str());
-	int padLength = 0;
-	if (amount.length() < 64)
-	{
-		padLength = 64 - amount.length();
-		memset(buffer, '0', padLength);
-	}
-	memcpy(buffer + padLength, amount.c_str(), amount.length());
-	buffer[64] = 0;
+    if (decimals < 0 || decimals > 77 || amount.empty()) return uint256_t(0);
 
-	amount = string(buffer);
+    const size_t dot = amount.find('.');
+    if (dot != string::npos && amount.find('.', dot + 1) != string::npos) return uint256_t(0);
 
-	//now place the decimal at the right spot
-	amount.insert(64 - decimals, ".");
+    string whole = (dot == string::npos) ? amount : amount.substr(0, dot);
+    string fraction = (dot == string::npos) ? "" : amount.substr(dot + 1);
+    if (whole.empty()) whole = "0";
+    if (fraction.length() > static_cast<size_t>(decimals)) return uint256_t(0);
 
-	//crawl along from the other side to find the first character or the last zero
-	for (std::string::size_type i = 0; i < amount.size(); i++) {
-		if (amount[i] == '.')
-		{
-			amount = amount.substr(i - 1);
-			break;
-		}
-		else if (amount[i] != '0')
-		{
-			amount = amount.substr(i);
-			break;
-		}
-	}
+    for (size_t i = 0; i < whole.length(); ++i) {
+        if (!isdigit(static_cast<unsigned char>(whole[i]))) return uint256_t(0);
+    }
+    for (size_t i = 0; i < fraction.length(); ++i) {
+        if (!isdigit(static_cast<unsigned char>(fraction[i]))) return uint256_t(0);
+    }
 
-	return amount;
+    while (whole.length() > 1 && whole[0] == '0') whole.erase(0, 1);
+    fraction.append(static_cast<size_t>(decimals) - fraction.length(), '0');
+    string scaled = whole + fraction;
+    size_t first = scaled.find_first_not_of('0');
+    if (first == string::npos) return uint256_t(0);
+    scaled.erase(0, first);
+    if (scaled.length() > 78) return uint256_t(0);
+
+    const string hex = ConvertBase(10, 16, scaled.c_str());
+    if (hex.empty()) return uint256_t(0);
+    return uint256_t(hex.c_str());
+}
+
+string Util::ConvertWeiToEthString(const uint256_t *weiVal, int decimals)
+{
+    if (weiVal == nullptr) return "0";
+    if (decimals < 0) decimals = 0;
+    if (decimals > 77) decimals = 77;
+
+    vector<uint8_t> bytes = weiVal->export_bits_truncate();
+    const string hex = ConvertBytesToHex(bytes.data(), bytes.size());
+    string amount = ConvertBase(16, 10, hex.c_str());
+    if (amount.empty()) amount = "0";
+
+    const size_t decimalPlaces = static_cast<size_t>(decimals);
+    if (decimalPlaces > 0) {
+        if (amount.length() <= decimalPlaces) {
+            amount.insert(0, decimalPlaces + 1 - amount.length(), '0');
+        }
+        amount.insert(amount.length() - decimalPlaces, 1, '.');
+
+        while (amount.length() > 1 && amount.back() == '0') amount.pop_back();
+        if (!amount.empty() && amount.back() == '.') amount.pop_back();
+    }
+
+    const size_t firstNonZero = amount.find_first_not_of('0');
+    if (firstNonZero == string::npos) return "0";
+    if (amount[firstNonZero] == '.') {
+        return "0" + amount.substr(firstNonZero);
+    }
+    return amount.substr(firstNonZero);
 }
 
 string Util::ConvertEthToWei(double eth)

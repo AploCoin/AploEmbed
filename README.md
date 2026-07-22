@@ -12,7 +12,18 @@ Mining rewards are accounted in Gaplo. Staking locks APLO in the staking contrac
 - ESP32-C3
 - ESP8266
 
-ESP32 is the default example target. Platform-specific PlatformIO environments live in [`docs/platforms.md`](docs/platforms.md) and the per-platform files under `docs/`.
+ESP32, ESP32-C3, and ESP8266 have dedicated build folders inside each example. The application logic is shared, while `BoardWifi.h` keeps board-specific radio behavior isolated.
+
+For example, to build mining:
+
+```bash
+cd "examples/Aplo Mining/ESP32"     # or ESP32-C3 / ESP8266
+platformio run
+platformio run --target upload
+platformio device monitor
+```
+
+Do not copy WiFi reset code between board folders: ESP8266 intentionally uses a non-destructive disconnect, while ESP32-C3 disables modem sleep and performs a full STA reset.
 
 ## Install
 
@@ -125,7 +136,7 @@ contract.SetPrivateKey(PRIVATE_KEY);
 
 std::string to = "0xRecipientAddressHere";
 std::string data = "";
-uint256_t value = Util::ConvertToWei(10.0, 18);
+uint256_t value = Util::ConvertDecimalToWei("10", 18);
 
 uint32_t nonce = web3.EthGetTransactionCount(&fromAddress);
 std::string txHash = contract.SendTransaction(
@@ -177,7 +188,7 @@ AploCoin uses APLO for value/staking and Gaplo as the gas token unit.
 Helpers:
 
 ```cpp
-uint256_t gaplo = Util::ConvertToWei(1.5, 18);
+uint256_t gaplo = Util::ConvertDecimalToWei("1.5", 18);
 std::string aplo = Util::ConvertWeiToEthString(&gaplo, 18);
 ```
 

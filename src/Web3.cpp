@@ -7,6 +7,7 @@
 
 #include "Web3.h"
 
+#include "Contract.h"
 #include "Util.h"
 #include "TagReader/TagReader.h"
 #include <cctype>
@@ -526,7 +527,6 @@ string Web3::getString(const string *json)
     int index = 2;
     while (lengthIndex > 0 && index < static_cast<int>(v->size()))
     {
-        Serial.println(index);
         asciiHex += v->at(index++);
         if (lengthIndex <= 32) {
             lengthIndex = 0;
@@ -659,6 +659,20 @@ void Web3::setupCert()
     }
 }
 
+static bool parsePort(const string& text, unsigned short *port)
+{
+    if (port == nullptr || text.empty()) return false;
+
+    char *end = nullptr;
+    const unsigned long portValue = strtoul(text.c_str(), &end, 10);
+    if (end == text.c_str() || *end != '\0' || portValue == 0 || portValue > 65535UL) {
+        return false;
+    }
+
+    *port = static_cast<unsigned short>(portValue);
+    return true;
+}
+
 bool Web3::parseEndpoint(const char* url, RpcEndpoint* endpoint)
 {
     if (endpoint == nullptr) return false;
@@ -673,27 +687,26 @@ bool Web3::parseEndpoint(const char* url, RpcEndpoint* endpoint)
         node = node.substr(8);
         endpoint->port = 443;
     } else if (node.rfind("http://", 0) == 0) {
-        node = node.substr(7);
-        endpoint->port = 80;
+        Serial.println("HTTP RPC endpoints are not supported; use HTTPS");
+        return false;
     } else {
         endpoint->port = 443;
     }
 
-    size_t ppos = node.find(':');
-    if (ppos != string::npos) {
-        endpoint->port = static_cast<unsigned short>(stoi(node.substr(ppos + 1)));
-        node = node.substr(0, ppos);
+    const size_t pathPos = node.find('/');
+    string authority = (pathPos == string::npos) ? node : node.substr(0, pathPos);
+    endpoint->path = (pathPos == string::npos) ? "/" : node.substr(pathPos);
+
+    const size_t colonPos = authority.rfind(':');
+    if (colonPos != string::npos) {
+        const string portText = authority.substr(colonPos + 1);
+        if (!parsePort(portText, &endpoint->port)) {
+            return false;
+        }
+        authority = authority.substr(0, colonPos);
     }
 
-    ppos = node.find('/');
-    if (ppos != string::npos) {
-        endpoint->host = node.substr(0, ppos);
-        endpoint->path = node.substr(ppos);
-    } else {
-        endpoint->host = node;
-        endpoint->path = "/";
-    }
-
+    endpoint->host = authority;
     endpoint->valid = !endpoint->host.empty();
     return endpoint->valid;
 }

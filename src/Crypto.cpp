@@ -125,7 +125,7 @@ bool Crypto::RandomBytes(uint8_t *buffer, size_t length)
 #endif
 }
 
-void Crypto::Keccak256(const uint8_t *data, uint16_t length, uint8_t *result)
+void Crypto::Keccak256(const uint8_t *data, size_t length, uint8_t *result)
 {
     keccak_256(data, length, result);
 }
