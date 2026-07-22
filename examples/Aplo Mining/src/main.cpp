@@ -10,147 +10,64 @@ using std::string;
 extern const char *ssid;
 extern const char *password;
 
-// WiFi handling is kept in this sketch so the example is directly reusable.
 #if defined(ESP8266)
-static WiFiEventHandler wifiConnectedHandler;
 static WiFiEventHandler wifiDisconnectHandler;
-static WiFiEventHandler wifiGotIpHandler;
-static WiFiEventHandler wifiDhcpTimeoutHandler;
-static volatile bool wifiStationAssociated = false;
-static volatile bool wifiGotIp = false;
-static const unsigned long ESP8266_WIFI_DHCP_TIMEOUT_MS = 60000UL;
+static bool wifiHandlerRegistered = false;
 #endif
-static unsigned long lastWifiRetryMs = 0;
 
-static const char *boardName()
-{
-#if defined(ESP8266)
-    return "ESP8266";
-#elif defined(CONFIG_IDF_TARGET_ESP32C3)
-    return "ESP32-C3";
-#else
-    return "ESP32";
-#endif
-}
-
-static void initWifiDiagnostics()
-{
-#if defined(ESP8266)
-    wifiConnectedHandler = WiFi.onStationModeConnected(
-        [](const WiFiEventStationModeConnected &event) {
-            wifiStationAssociated = true;
-            Serial.print(F("\nESP8266 associated with AP on channel "));
-            Serial.println(event.channel);
-        });
-    wifiDisconnectHandler = WiFi.onStationModeDisconnected(
-        [](const WiFiEventStationModeDisconnected &event) {
-            wifiStationAssociated = false;
-            wifiGotIp = false;
-            Serial.print(F("\nWiFi disconnected from SSID="));
-            Serial.print(event.ssid);
-            Serial.print(F(", reason="));
-            Serial.println(event.reason);
-        });
-    wifiGotIpHandler = WiFi.onStationModeGotIP(
-        [](const WiFiEventStationModeGotIP &event) {
-            wifiStationAssociated = true;
-            wifiGotIp = true;
-            Serial.print(F("\nESP8266 DHCP address: "));
-            Serial.println(event.ip);
-        });
-    wifiDhcpTimeoutHandler = WiFi.onStationModeDHCPTimeout([]() {
-        Serial.println(F("\nESP8266 DHCP timeout"));
-    });
-#endif
-}
-
-static bool connectWifiOnce(unsigned long timeoutMs)
+static bool connectWifi(unsigned long timeoutMs)
 {
     WiFi.persistent(false);
     WiFi.setAutoReconnect(true);
+
 #if defined(ESP8266)
-    // Force DHCP mode in case an earlier sketch left a stale static-IP config.
-    // Samsung may show the station as associated before DHCP has completed.
+    if (!wifiHandlerRegistered) {
+        wifiDisconnectHandler = WiFi.onStationModeDisconnected(
+            [](const WiFiEventStationModeDisconnected &event) {
+                Serial.print(F("WiFi disconnected, reason="));
+                Serial.println(event.reason);
+            });
+        wifiHandlerRegistered = true;
+    }
     WiFi.mode(WIFI_STA);
     WiFi.config(IPAddress(0U), IPAddress(0U), IPAddress(0U));
-    wifiStationAssociated = false;
-    wifiGotIp = false;
-    delay(100);
     const unsigned long effectiveTimeout = timeoutMs < 45000UL ? 45000UL : timeoutMs;
-#elif defined(ESP32)
+#else
     WiFi.disconnect(true, true);
     WiFi.mode(WIFI_OFF);
     delay(250);
     WiFi.mode(WIFI_STA);
-    #if defined(CONFIG_IDF_TARGET_ESP32C3)
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
     WiFi.setSleep(false);
-    #endif
+#endif
     const unsigned long effectiveTimeout = timeoutMs;
 #endif
+
     WiFi.begin(ssid, password);
-    const unsigned long start = millis();
+    const unsigned long startedAt = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - startedAt < effectiveTimeout) {
+        delay(250);
 #if defined(ESP8266)
-    unsigned long associatedAt = 0;
-    while (!wifiGotIp) {
-        if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0U)) {
-            wifiGotIp = true;
-            break;
-        }
-        if (wifiStationAssociated && associatedAt == 0) associatedAt = millis();
-        const unsigned long allowed = associatedAt == 0
-            ? effectiveTimeout
-            : effectiveTimeout + ESP8266_WIFI_DHCP_TIMEOUT_MS;
-        if (millis() - start >= allowed) break;
-        delay(250);
-        Serial.print('.');
         yield();
-    }
-    return wifiGotIp && WiFi.localIP() != IPAddress(0U);
-#else
-    while (WiFi.status() != WL_CONNECTED && millis() - start < effectiveTimeout) {
-        delay(250);
-        Serial.print('.');
-    }
-    return WiFi.status() == WL_CONNECTED;
 #endif
-}
-
-static bool connectWifi(uint8_t maxAttempts, unsigned long timeoutMs)
-{
-    if (WiFi.status() == WL_CONNECTED) return true;
-    Serial.print(F("Connecting to WiFi on "));
-    Serial.print(boardName());
-    Serial.print(F(": "));
-    Serial.println(ssid);
-    for (uint8_t attempt = 1; attempt <= maxAttempts; ++attempt) {
-        Serial.print(F("WiFi attempt "));
-        Serial.print(attempt);
-        Serial.print('/');
-        Serial.println(maxAttempts);
-        if (connectWifiOnce(timeoutMs)) {
-            Serial.println(F("\nWiFi connected"));
-            Serial.print(F("IP address: "));
-            Serial.println(WiFi.localIP());
-            lastWifiRetryMs = 0;
-            return true;
-        }
-        Serial.print(F("\nWiFi attempt failed. status="));
-        Serial.println(WiFi.status());
-        if (attempt < maxAttempts) delay(1000);
     }
-    Serial.println(F("WiFi connect failed after all attempts."));
-    return false;
+
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.print(F("WiFi failed, status="));
+        Serial.println(WiFi.status());
+        return false;
+    }
+
+    Serial.print(F("WiFi connected: "));
+    Serial.println(WiFi.localIP());
+    return true;
 }
 
-static bool ensureWifiConnected(uint8_t maxAttempts, unsigned long timeoutMs,
-                                unsigned long retryDelayMs)
+static bool ensureWifiConnected()
 {
     if (WiFi.status() == WL_CONNECTED) return true;
-    const unsigned long now = millis();
-    if (lastWifiRetryMs != 0 && now - lastWifiRetryMs < retryDelayMs) return false;
-    lastWifiRetryMs = now;
-    Serial.println(F("WiFi disconnected; pausing work and reconnecting..."));
-    return connectWifi(maxAttempts, timeoutMs);
+    Serial.println(F("Reconnecting WiFi..."));
+    return connectWifi(45000UL);
 }
 
 static void beginSerial()
@@ -159,45 +76,11 @@ static void beginSerial()
     delay(1000);
 }
 
-// ============================================================================
-// IMPORTANT SAFETY NOTES - READ BEFORE USE
-// ============================================================================
-//
-// 1. NEVER commit your real private key to version control
-// 2. Mining requires minimum 1,000 APLO staked to receive Gaplo mining rewards
-// 3. Mining submits transactions that cost gas - ensure sufficient balance
-// 4. Mining difficulty adjusts dynamically based on network conditions
-// 5. Block reward cooldown: 20 blocks between successful mines per address
-// 6. Test with small amounts and monitor gas costs first
-// 7. Stake only sets the reward level/multiplier; base reward comes from gas spent
-//
-// Mining Process:
-//   1. Query miner_params(address) to get current difficulty and prev_hash
-//   2. Generate random nonce and hash it with miner params
-//   3. If hash < difficulty, submit mine(nonce) transaction
-//   4. Wait for 20+ blocks before next mine attempt
-//   5. Base reward is calculated from gas spent, then scaled by staking tier
-//
-// Reward logic (AploNode core/state_transition.go):
-//   gaploUsed   = gasUsed * min(gasPrice, baseFee)
-//   baseReward  = gaploUsed / GAploRewardCoef
-//   finalReward = baseReward * stakingMultiplier / 10
-//   if sender is not coinbase, gaploUsed is added back to the reward
-//
-// Staking tier table: <1,000 APLO => 0x, 1,000+ => 1.0x,
-// then +0.1x per extra 1,000 APLO up to 1.7x at 8,000+ APLO.
-//
-// ============================================================================
-
 // WiFi credentials - replace with your network details
 const char *ssid = "<YOUR_SSID>";
 const char *password = "<YOUR_WIFI_PASSWORD>";
 
-// Wallet configuration
-// SECURITY: Replace with your actual private key. The public address is derived
-// from it at runtime, so there is no separate address value to keep in sync.
-// WARNING: Keep your private key secret! Never share or commit it.
-// CRITICAL: Replace with your actual 64-character hex private key (without 0x prefix)
+// Replace the demo key and keep real private keys out of source control.
 const char *PRIVATE_KEY = "0000000000000000000000000000000000000000000000000000000000000000";
 string myAddress;
 
@@ -206,10 +89,6 @@ string myAddress;
 #define HASH_ATTEMPTS_PER_CYCLE 2000 // Nonces to try before checking block height (~8 expected hits at 0x00ff...)
 #define CYCLE_DELAY_MS 1000          // Delay between hash cycles (ms)
 
-// WiFi reconnect parameters
-#define WIFI_CONNECT_ATTEMPTS 3
-#define WIFI_ATTEMPT_TIMEOUT_MS 45000
-#define WIFI_RECONNECT_ATTEMPTS 2
 #define WIFI_RETRY_DELAY_MS 5000
 
 #if defined(ESP8266)
@@ -218,8 +97,6 @@ Web3 *web3 = nullptr;
 Web3 web3Instance;
 Web3 *web3 = &web3Instance;
 #endif
-int wificounter = 0;
-
 
 // Mining state
 struct MinerParams {
@@ -253,9 +130,8 @@ void setup()
 {
     beginSerial();
     Serial.println(F("\n\n=== AploEmbed Mining Example ===\n"));
-    initWifiDiagnostics();
 
-    while (!connectWifi(WIFI_CONNECT_ATTEMPTS, WIFI_ATTEMPT_TIMEOUT_MS)) {
+    while (!connectWifi(45000UL)) {
         Serial.println(F("WiFi unavailable during setup; retrying in 5 seconds..."));
         delay(WIFI_RETRY_DELAY_MS);
     }
@@ -266,48 +142,25 @@ void setup()
     web3 = &esp8266Web3Instance;
 #endif
 
-    Serial.println(F("Web3 initialized with AploCoin RPC endpoints"));
-    Serial.println(F("Primary: pub1.aplocoin.com"));
-    Serial.println(F("Fallback: pub2.aplocoin.com"));
-    Serial.println(F("TLS: auto root CA resolution enabled\n"));
-
     myAddress = Crypto::PrivateKeyToAddress(PRIVATE_KEY);
-
-    Serial.print(F("Mining Contract: "));
-    Serial.println(APLO_MINING_CONTRACT);
-    Serial.print(F("Staking Contract: "));
-    Serial.println(APLO_STAKING_CONTRACT);
-    Serial.println();
 
     Serial.print(F("My Address: "));
     Serial.println(myAddress.c_str());
     queryBalances(myAddress.c_str());
 
-    // CRITICAL: Check staking status BEFORE attempting to mine
-    Serial.println(F("=== Checking Staking Status ===\n"));
     queryStakingStatus(myAddress.c_str());
-
-    Serial.println(F("\n=== Starting Mining Loop ===\n"));
-    Serial.println(F("Mining will attempt to find valid nonces and submit transactions."));
-    Serial.println(F("Press RESET to stop.\n"));
+    Serial.println(F("Mining started"));
 }
 
 void loop()
 {
-    if (!ensureWifiConnected(WIFI_RECONNECT_ATTEMPTS, WIFI_ATTEMPT_TIMEOUT_MS, WIFI_RETRY_DELAY_MS)) {
+    if (!ensureWifiConnected()) {
         delay(CYCLE_DELAY_MS);
         return;
     }
-
-    // Attempt mining cycle
     bool mined = attemptMining(myAddress.c_str());
 
-    if (mined) {
-        Serial.println(F("\nMine transaction broadcast accepted; execution is not confirmed yet."));
-        Serial.println(F("Wait for a successful transaction receipt before treating the mine as complete.\n"));
-    }
-
-    // Delay between mining cycles
+    if (mined) Serial.println(F("Mine transaction submitted"));
     delay(CYCLE_DELAY_MS);
 }
 
@@ -330,13 +183,9 @@ void queryStakingStatus(const char *address)
 {
     string addr = address;
     string stakingContractAddr = APLO_STAKING_CONTRACT;
-
-    // Query stake amount
     uint256_t stakeWei = web3->AploGetStake(&stakingContractAddr, &addr);
     string stakeAplo = Util::ConvertWeiToEthString(&stakeWei, 18);
     double stakeAmount = atof(stakeAplo.c_str());
-
-    // Query multiplier (scaled by 10, e.g., 10 = 1.0x, 17 = 1.7x)
     uint256_t multiplierRaw = web3->AploGetStakeMultiplier(&stakingContractAddr, &addr);
     uint32_t multiplierScaled = (uint32_t)multiplierRaw;
     double multiplier = multiplierScaled / 10.0;
@@ -348,36 +197,17 @@ void queryStakingStatus(const char *address)
     Serial.print(F("Mining Multiplier: "));
     Serial.print(multiplier, 1);
     Serial.println(F("x"));
-
-    // Determine tier and display status
     if (stakeAmount < 1000.0) {
-        Serial.println(F("\nWARNING: Stake is below 1,000 APLO"));
-        Serial.println(F("Mining reward is gated off at 0x multiplier."));
-        Serial.println(F("Stake at least 1,000 APLO to unlock the gas-based reward level."));
-        Serial.println(F("See 'Aplo Staking' example for staking instructions.\n"));
+        Serial.println(F("Stake below 1,000 APLO; mining rewards disabled"));
     } else if (stakeAmount < 2000.0) {
-        Serial.println(F("\nTier 1: gas-based mining reward at 1.0x multiplier"));
-        Serial.println(F("Stake 2,000+ APLO to increase multiplier to 1.1x\n"));
+        Serial.println(F("Mining multiplier: 1.0x"));
     } else if (stakeAmount < 8000.0) {
-        uint32_t tier = (uint32_t)(stakeAmount / 1000.0);
-        Serial.print(F("\nTier "));
-        Serial.print(tier);
-        Serial.print(F(": gas-based mining reward at "));
+        Serial.print(F("Mining multiplier: "));
         Serial.print(multiplier, 1);
-        Serial.println(F("x multiplier"));
+        Serial.println(F("x"));
 
-        if (stakeAmount < 8000.0) {
-            uint32_t nextTier = tier + 1;
-            double nextMultiplier = (10.0 + nextTier) / 10.0;
-            Serial.print(F("Stake "));
-            Serial.print(nextTier * 1000);
-            Serial.print(F("+ APLO to increase multiplier to "));
-            Serial.print(nextMultiplier, 1);
-            Serial.println(F("x\n"));
-        }
     } else {
-        Serial.println(F("\nMAX TIER: gas-based mining reward at 1.7x multiplier (maximum)"));
-        Serial.println(F("You have reached the highest staking tier!\n"));
+        Serial.println(F("Mining multiplier: 1.7x"));
     }
 }
 
@@ -395,8 +225,6 @@ MinerParams getMinerParams(const char *address)
 
     if (success) {
         params.lastBlock = (uint32_t)lastBlock;
-        // Decode once before the hot loop. Mining uses fixed byte arrays and
-        // performs no String/std::string/vector allocation per nonce.
         string diffHex = "0x" + currentDifficulty.str(16, 64);
         string prevHashHex = "0x" + prevHash.str(16, 64);
         string totalMinedHex = "0x" + totalMined.str(16, 64);
@@ -408,15 +236,6 @@ MinerParams getMinerParams(const char *address)
         Serial.println(F("ERROR: failed to read miner_params(address) from RPC."));
         params.valid = false;
     }
-
-    Serial.println(F("Miner Parameters:"));
-    Serial.print(F("  Last Block: "));
-    Serial.println(params.lastBlock);
-    Serial.print(F("  Total Mined: "));
-    Serial.println(Util::ConvertBytesToHex(params.totalMined, 32).c_str());
-    Serial.print(F("  Difficulty target: "));
-    Serial.println(Util::ConvertBytesToHex(params.currentDifficulty, 32).c_str());
-    Serial.println(F("  Note: lower target = harder mining; 0x00ff... is about 1 valid nonce per 256 random attempts."));
 
     return params;
 }
@@ -438,8 +257,8 @@ bool attemptMining(const char *address)
     Serial.print(F("Current Block: "));
     Serial.println(currentBlock);
 
-    if (currentBlock - params.lastBlock < BLOCK_COOLDOWN) {
-        uint32_t blocksRemaining = BLOCK_COOLDOWN - (currentBlock - params.lastBlock);
+    if (static_cast<uint32_t>(currentBlock) < params.lastBlock + BLOCK_COOLDOWN) {
+        uint32_t blocksRemaining = params.lastBlock + BLOCK_COOLDOWN - static_cast<uint32_t>(currentBlock);
         Serial.print(F("Cooldown active: "));
         Serial.print(blocksRemaining);
         Serial.println(F(" blocks remaining"));
@@ -453,9 +272,6 @@ bool attemptMining(const char *address)
         Serial.println(F("Mining paused: invalid derived wallet address."));
         return false;
     }
-
-    // Fixed-size hot loop: no Arduino String, std::string, vector, or random()
-    // allocations. Nonces come from the platform hardware CSPRNG.
     for (int i = 0; i < HASH_ATTEMPTS_PER_CYCLE; i++) {
         uint8_t nonce[32];
         uint8_t hash[32];
@@ -468,18 +284,12 @@ bool attemptMining(const char *address)
             Serial.println(F("\n\nVALID NONCE FOUND!"));
             Serial.print(F("Nonce: "));
             Serial.println(Util::ConvertBytesToHex(nonce, 32).c_str());
-            Serial.print(F("Hash: "));
-            Serial.println(Util::ConvertBytesToHex(hash, 32).c_str());
-            Serial.print(F("Difficulty target: "));
-            Serial.println(Util::ConvertBytesToHex(params.currentDifficulty, 32).c_str());
             return submitMineTransaction(nonce);
         }
 
-        if (i % 10 == 0) Serial.print(F("."));
         if ((i & 0x3f) == 0) delay(0);
     }
 
-    Serial.println(F("\nNo valid nonce found in this cycle."));
     return false;
 }
 

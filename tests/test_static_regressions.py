@@ -225,8 +225,8 @@ class StaticRegressionTests(unittest.TestCase):
     def test_examples_are_self_contained_and_use_github_dependency(self):
         self.assertFalse((ROOT / 'examples' / 'common').exists())
         expected_markers = {
-            'Aplo Mining': ['attemptMining', 'submitMineTransaction', 'WIFI_ATTEMPT_TIMEOUT_MS'],
-            'Aplo Balance Query': ['queryAploBalance', 'queryGaploBalance'],
+            'Aplo Mining': ['attemptMining', 'submitMineTransaction', 'ensureWifiConnected'],
+            'Aplo Balance Query': ['queryBalance'],
             'Aplo Send Transaction': ['sendAploToAddress', 'SEND_AMOUNT_APLO'],
             'Aplo Staking': ['queryStakingStatus', 'stakeAplo', 'STAKE_AMOUNT_APLO'],
         }
@@ -238,7 +238,7 @@ class StaticRegressionTests(unittest.TestCase):
             self.assertIn('[env:esp32dev]', ini)
             self.assertIn('[env:esp32-c3-devkitm-1]', ini)
             self.assertIn('[env:esp12e]', ini)
-            self.assertIn('https://github.com/AploCoin/AploEmbed.git#refactor/platform-specific-examples', ini)
+            self.assertIn('https://github.com/AploCoin/AploEmbed.git#master', ini)
             self.assertNotIn('file://', ini)
             source = (root / 'src' / 'main.cpp').read_text()
             self.assertIn('void setup()', source)
@@ -258,16 +258,11 @@ class StaticRegressionTests(unittest.TestCase):
             source = read(f'examples/{example}/src/main.cpp')
             self.assertIn('#if defined(ESP8266)', source)
             self.assertIn('onStationModeDisconnected', source)
-            self.assertIn('onStationModeConnected', source)
-            self.assertIn('onStationModeGotIP', source)
-            self.assertIn('onStationModeDHCPTimeout', source)
+            self.assertIn('wifiHandlerRegistered', source)
             self.assertIn('WiFi.config(IPAddress(0U), IPAddress(0U), IPAddress(0U))', source)
-            self.assertIn('ESP8266_WIFI_DHCP_TIMEOUT_MS', source)
-            self.assertIn('wifiStationAssociated', source)
-            self.assertIn('wifiGotIp', source)
             self.assertIn('45000UL', source)
             self.assertNotIn('WiFi.disconnect(false)', source)
-            self.assertIn('#elif defined(ESP32)', source)
+            self.assertIn('#else\n    WiFi.disconnect(true, true)', source)
 
     def test_examples_do_not_allocate_web3_dynamically_or_hang_forever(self):
         sources = [
