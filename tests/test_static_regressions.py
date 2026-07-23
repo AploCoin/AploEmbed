@@ -126,6 +126,18 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('string paramStr;', contract)
         self.assertIn('vector<uint8_t> param = RlpEncodeForRawTransaction', contract)
         self.assertIn('paramStr = Util::VectorToString(&param);', contract)
+        self.assertIn('static void appendRlpItem(vector<uint8_t>& output, const uint8_t *input, size_t inputLen)', contract)
+        raw_rlp = contract[contract.index('vector<uint8_t> Contract::RlpEncodeForRawTransaction'):]
+        for temporary in ['outputNonce', 'outputGasPrice', 'outputGasLimit', 'outputTo',
+                          'outputValue', 'outputData', 'vector<uint8_t> R(',
+                          'vector<uint8_t> S(', 'outputR', 'outputS', 'outputV']:
+            self.assertNotIn(temporary, raw_rlp)
+        self.assertIn('encoded.reserve(rlpListHeaderSize(payloadSize) + payloadSize);', raw_rlp)
+        self.assertIn('return payloadSize < 55 ? 1 : 1 + rlpLengthByteCount(payloadSize);', contract)
+        self.assertIn('if (payloadSize < 55) {', contract)
+        self.assertIn('if (inputLen == 1 && input[0] == 0) {', contract)
+        self.assertIn('appendRlpItem(encoded, sig, SIGNATURE_LENGTH / 2);', raw_rlp)
+        self.assertIn('appendRlpItem(encoded, sig + (SIGNATURE_LENGTH / 2), SIGNATURE_LENGTH / 2);', raw_rlp)
         send_fn = web3[web3.index('string Web3::EthSendSignedTransaction'):web3.index('// -------------------------------\n// Private')]
         self.assertIn('string input;', send_fn)
         self.assertIn('input.reserve(data->size() + 80);', send_fn)
