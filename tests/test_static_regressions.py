@@ -177,7 +177,7 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('SetupContractData("mine(bytes32)"', web3)
         self.assertIn('APLO Balance:', mining)
         self.assertIn('Gas Balance (GAPLO):', mining)
-        self.assertIn('HASH_ATTEMPTS_PER_CYCLE 128', mining)
+        self.assertIn('HASH_ATTEMPTS_PER_CYCLE 2000', mining)
         self.assertIn('Web3 web3Instance;', mining)
         self.assertIn('Web3 *web3 = &web3Instance;', mining)
         self.assertNotIn('web3 = new Web3();', mining)
@@ -200,7 +200,7 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertNotIn('string packed', hot_loop)
 
         mining_readme = read('examples/Aplo Mining/README.md')
-        self.assertIn('128 nonces per cycle', mining_readme)
+        self.assertIn('2000 nonces per cycle', mining_readme)
         self.assertIn('re-reads `miner_params(address)`', mining_readme)
         self.assertIn('best-effort client-side guard', mining_readme)
         self.assertIn('status = 0x1', mining_readme)

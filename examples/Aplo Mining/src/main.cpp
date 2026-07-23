@@ -137,7 +137,7 @@ string myAddress;
 
 // Mining parameters
 #define BLOCK_COOLDOWN 20            // Minimum blocks between mine attempts
-#define HASH_ATTEMPTS_PER_CYCLE 128  // Keep work batches short so global mining state stays fresh
+#define HASH_ATTEMPTS_PER_CYCLE 2000 // Revalidate the challenge between bounded 2,000-nonce batches
 #define CYCLE_DELAY_MS 1000          // Delay between hash cycles (ms)
 #define RECEIPT_POLL_ATTEMPTS 30
 #define RECEIPT_POLL_DELAY_MS 1000
