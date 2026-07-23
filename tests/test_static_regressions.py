@@ -71,6 +71,13 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('HTTP response exceeds ESP8266 buffer', web3)
         self.assertIn('client = &getEsp8266Client();', web3)
         self.assertNotIn('WiFiClientSecure scopedClient;', web3.split('#if defined(ESP8266)', 1)[1].split('#else', 1)[0])
+        self.assertIn('bool receiptStatusRequest = data->find("\\\"method\\\":\\\"eth_getTransactionReceipt\\\"")', web3)
+        self.assertIn('const char *receiptSuccessToken = "\\\"status\\\":\\\"0x1\\\"";', web3)
+        self.assertIn('const char *receiptRevertToken = "\\\"status\\\":\\\"0x0\\\"";', web3)
+        self.assertIn('return "{\\\"result\\\":{\\\"status\\\":\\\"0x1\\\"}}";', web3)
+        self.assertIn('return "{\\\"result\\\":{\\\"status\\\":\\\"0x0\\\"}}";', web3)
+        overflow_block = web3[web3.index('if (responseOverflow)'):web3.index('return result;', web3.index('if (responseOverflow)'))]
+        self.assertNotIn('endpoint.retryAfterMs = millis()', overflow_block)
         self.assertIn('#else\n            result += c;\n#endif', web3)
 
     def test_esp8266_tls_initializes_x509_time_and_reports_bearssl_failures(self):
@@ -265,6 +272,8 @@ class StaticRegressionTests(unittest.TestCase):
             '  Difficulty target: ',
             'Expected attempts per valid nonce: ',
             'Chance per 2,000-nonce batch: ',
+            'Serial.print(mantissa, 2);',
+            'Serial.print(F("e+"));',
             'Current Block: ',
             'Cooldown active: ',
             'Cooldown complete, attempting to mine...',

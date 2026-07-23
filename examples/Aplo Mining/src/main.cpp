@@ -324,7 +324,11 @@ void printMiningDifficultyStats(const uint8_t target[32])
     if (expectedAttempts < 4294967295.0) {
         Serial.println(static_cast<uint32_t>(expectedAttempts + 0.5));
     } else {
-        Serial.println(expectedAttempts, 0);
+        const int decimalExponent = static_cast<int>(floor(log10(expectedAttempts)));
+        const double mantissa = expectedAttempts / pow(10.0, decimalExponent);
+        Serial.print(mantissa, 2);
+        Serial.print(F("e+"));
+        Serial.println(decimalExponent);
     }
     Serial.print(F("  Chance per 2,000-nonce batch: "));
     Serial.print(batchChancePercent, 2);
