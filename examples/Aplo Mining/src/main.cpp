@@ -139,6 +139,8 @@ string myAddress;
 #define BLOCK_COOLDOWN 20            // Minimum blocks between mine attempts
 #define HASH_ATTEMPTS_PER_CYCLE 128  // Keep work batches short so global mining state stays fresh
 #define CYCLE_DELAY_MS 1000          // Delay between hash cycles (ms)
+#define RECEIPT_POLL_ATTEMPTS 30
+#define RECEIPT_POLL_DELAY_MS 1000
 
 // WiFi reconnect parameters
 #define WIFI_CONNECT_ATTEMPTS 3
@@ -163,8 +165,14 @@ struct MinerParams {
     bool valid;
 };
 
+enum MineConfirmation {
+    MINE_PENDING,
+    MINE_CONFIRMED,
+    MINE_REVERTED
+};
+
 void queryStakingStatus(const char *address);
-MinerParams getMinerParams(const char *address);
+MinerParams getMinerParams(const char *address, bool printDetails = true);
 bool attemptMining(const char *address);
 bool mineNonce(const uint8_t address[20], const MinerParams &params,
                uint8_t nonce[32], uint8_t hash[32]);
@@ -172,6 +180,7 @@ void mineHash(const uint8_t address[20], const uint8_t nonce[32],
               const MinerParams &params, uint8_t hash[32]);
 bool minerParamsMatch(const MinerParams &left, const MinerParams &right);
 bool submitMineTransaction(const uint8_t nonce[32]);
+MineConfirmation waitForMineConfirmation(const string &txHash);
 void queryBalances(const char *address);
 
 bool decodeAddress(const char *address, uint8_t output[20])
@@ -221,10 +230,13 @@ void loop()
         return;
     }
 
-    // Attempt mining cycle
     bool mined = attemptMining(myAddress.c_str());
 
-    (void)mined;
+    if (mined) {
+        Serial.println(F("\nSuccessfully mined and confirmed transaction!"));
+        Serial.println(F("Waiting for block cooldown before next attempt...\n"));
+        queryBalances(myAddress.c_str());
+    }
 
     // Delay between mining cycles
     delay(CYCLE_DELAY_MS);
@@ -273,7 +285,7 @@ void queryStakingStatus(const char *address)
     }
 }
 
-MinerParams getMinerParams(const char *address)
+MinerParams getMinerParams(const char *address, bool printDetails)
 {
     MinerParams params = {};
 
@@ -296,6 +308,17 @@ MinerParams getMinerParams(const char *address)
         Util::ConvertHexToBytes(params.prevHash, prevHashHex.c_str(), 32);
         Util::ConvertHexToBytes(params.totalMined, totalMinedHex.c_str(), 32);
         params.valid = true;
+
+        if (printDetails) {
+            Serial.println(F("Miner Parameters:"));
+            Serial.print(F("  Last Block: "));
+            Serial.println(params.lastBlock);
+            Serial.print(F("  Total Mined: "));
+            Serial.println(totalMined.str(10).c_str());
+            Serial.print(F("  Difficulty target: "));
+            Serial.println(diffHex.c_str());
+            Serial.println(F("  Note: lower target = harder mining; 0x00ff... is about 1 valid nonce per 256 random attempts."));
+        }
     } else {
         Serial.println(F("ERROR: failed to read miner_params(address) from RPC."));
         params.valid = false;
@@ -318,9 +341,22 @@ bool attemptMining(const char *address)
         return false;
     }
 
-    if (static_cast<uint32_t>(currentBlock) < params.lastBlock + BLOCK_COOLDOWN) {
+    Serial.print(F("Current Block: "));
+    Serial.println(currentBlock);
+
+    const uint32_t currentBlockNumber = static_cast<uint32_t>(currentBlock);
+    const uint32_t blocksSinceLastMine = currentBlockNumber >= params.lastBlock
+                                            ? currentBlockNumber - params.lastBlock
+                                            : 0;
+    if (blocksSinceLastMine < BLOCK_COOLDOWN) {
+        const uint32_t blocksRemaining = BLOCK_COOLDOWN - blocksSinceLastMine;
+        Serial.print(F("Cooldown active: "));
+        Serial.print(blocksRemaining);
+        Serial.println(F(" blocks remaining"));
         return false;
     }
+
+    Serial.println(F("Cooldown complete, attempting to mine..."));
 
     uint8_t addressBytes[20];
     if (!decodeAddress(address, addressBytes)) {
@@ -342,10 +378,14 @@ bool attemptMining(const char *address)
             Serial.println(F("\n\nVALID NONCE FOUND!"));
             Serial.print(F("Nonce: "));
             Serial.println(Util::ConvertBytesToHex(nonce, 32).c_str());
+            Serial.print(F("Hash: "));
+            Serial.println(Util::ConvertBytesToHex(hash, 32).c_str());
+            Serial.print(F("Difficulty target: "));
+            Serial.println(Util::ConvertBytesToHex(params.currentDifficulty, 32).c_str());
 
             // Another miner can update the global challenge while this device
             // searches. Never spend gas on work that is already known to be stale.
-            MinerParams freshParams = getMinerParams(address);
+            MinerParams freshParams = getMinerParams(address, false);
             if (!freshParams.valid) {
                 Serial.println(F("Mining submission paused: unable to revalidate miner params."));
                 return false;
@@ -364,9 +404,11 @@ bool attemptMining(const char *address)
             return submitMineTransaction(nonce);
         }
 
+        if (i % 10 == 0) Serial.print(F("."));
         if ((i & 0x3f) == 0) delay(0);
     }
 
+    Serial.println();
     return false;
 }
 
@@ -401,6 +443,8 @@ bool minerParamsMatch(const MinerParams &left, const MinerParams &right)
 
 bool submitMineTransaction(const uint8_t nonce[32])
 {
+    Serial.println(F("\nSubmitting mine transaction..."));
+
     string miningContractAddr = APLO_MINING_CONTRACT;
     string nonceStr = Util::ConvertBytesToHex(nonce, 32);
     string myAddr = myAddress;
@@ -413,7 +457,31 @@ bool submitMineTransaction(const uint8_t nonce[32])
 
     Serial.print(F("Transaction broadcast accepted: "));
     Serial.println(txHash.c_str());
-    Serial.println(F("Execution is pending; verify the transaction receipt before treating the mine as successful."));
+    Serial.println(F("Execution is pending; waiting for on-chain confirmation."));
 
-    return true;
+    const MineConfirmation confirmation = waitForMineConfirmation(txHash);
+    if (confirmation == MINE_CONFIRMED) return true;
+    if (confirmation == MINE_REVERTED) {
+        Serial.println(F("Mining transaction reverted on-chain."));
+        return false;
+    }
+
+    Serial.println(F("Mining receipt unavailable after timeout; transaction may still be pending."));
+    return false;
+}
+
+MineConfirmation waitForMineConfirmation(const string &txHash)
+{
+    for (uint8_t attempt = 0; attempt < RECEIPT_POLL_ATTEMPTS; ++attempt) {
+        delay(RECEIPT_POLL_DELAY_MS);
+        const int status = web3->EthGetTransactionReceiptStatus(&txHash);
+        if (status == 1) return MINE_CONFIRMED;
+        if (status == 0) return MINE_REVERTED;
+        Serial.print(F("."));
+#if defined(ESP8266)
+        yield();
+#endif
+    }
+    Serial.println();
+    return MINE_PENDING;
 }

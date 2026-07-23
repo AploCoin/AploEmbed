@@ -93,6 +93,8 @@ public:
     int EthBlockNumber();
     uint256_t EthGetBalance(const std::string* address);
     int EthGetTransactionCount(const std::string* address);
+    // Returns 1 for a successful receipt, 0 for a reverted receipt, and -1 while pending/unavailable.
+    int EthGetTransactionReceiptStatus(const std::string* transactionHash);
     std::string EthViewCall(const std::string* data, const char* to);
 
     std::string EthCall(const std::string* from, const char* to, long gas, long gasPrice, const std::string* value, const std::string* data);

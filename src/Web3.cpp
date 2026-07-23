@@ -246,6 +246,110 @@ int Web3::EthGetTransactionCount(const string* address) {
     return getInt(&output);
 }
 
+static size_t findJsonObjectEnd(const string& json, size_t objectStart) {
+    if (objectStart >= json.size() || json[objectStart] != '{') return string::npos;
+
+    unsigned depth = 0;
+    bool inString = false;
+    bool escaped = false;
+    for (size_t i = objectStart; i < json.size(); ++i) {
+        const char c = json[i];
+        if (inString) {
+            if (escaped) escaped = false;
+            else if (c == '\\') escaped = true;
+            else if (c == '"') inString = false;
+            continue;
+        }
+        if (c == '"') inString = true;
+        else if (c == '{') ++depth;
+        else if (c == '}' && --depth == 0) return i;
+    }
+    return string::npos;
+}
+
+static size_t findDirectJsonObjectKey(const string& json, size_t objectStart, size_t objectEnd, const char* key) {
+    if (key == nullptr || objectStart >= objectEnd || objectEnd >= json.size()) return string::npos;
+
+    unsigned depth = 1;
+    for (size_t i = objectStart + 1; i < objectEnd;) {
+        const char c = json[i];
+        if (c == '{' || c == '[') {
+            ++depth;
+            ++i;
+            continue;
+        }
+        if (c == '}' || c == ']') {
+            if (depth > 0) --depth;
+            ++i;
+            continue;
+        }
+        if (c != '"') {
+            ++i;
+            continue;
+        }
+
+        const size_t stringStart = i + 1;
+        bool escaped = false;
+        ++i;
+        while (i < objectEnd) {
+            if (escaped) escaped = false;
+            else if (json[i] == '\\') escaped = true;
+            else if (json[i] == '"') break;
+            ++i;
+        }
+        if (i >= objectEnd) return string::npos;
+
+        if (depth == 1 && json.compare(stringStart, i - stringStart, key) == 0) {
+            size_t separator = json.find_first_not_of(" \r\n\t", i + 1);
+            if (separator < objectEnd && json[separator] == ':') return stringStart - 1;
+        }
+        ++i;
+    }
+    return string::npos;
+}
+
+int Web3::EthGetTransactionReceiptStatus(const string* transactionHash) {
+    if (transactionHash == nullptr || transactionHash->empty()) return -1;
+
+    string normalizedHash = *transactionHash;
+    if (normalizedHash.rfind("0x", 0) != 0 && normalizedHash.rfind("0X", 0) != 0) {
+        normalizedHash.insert(0, "0x");
+    }
+
+    string m = "eth_getTransactionReceipt";
+    string p = "[\"" + normalizedHash + "\"]";
+    string input = generateJson(&m, &p);
+    string output = execWithFailover(&input);
+    if (output.empty()) return -1;
+
+    const size_t errorPos = output.find("\"error\"");
+    if (errorPos != string::npos) return -1;
+
+    const size_t resultKeyPos = output.find("\"result\"");
+    if (resultKeyPos == string::npos) return -1;
+    const size_t resultColonPos = output.find(':', resultKeyPos + 8);
+    if (resultColonPos == string::npos) return -1;
+    const size_t resultObjectPos = output.find_first_not_of(" \r\n\t", resultColonPos + 1);
+    if (resultObjectPos == string::npos || output[resultObjectPos] != '{') return -1;
+
+    const size_t resultObjectEnd = findJsonObjectEnd(output, resultObjectPos);
+    if (resultObjectEnd == string::npos) return -1;
+
+    const size_t statusPos = findDirectJsonObjectKey(output, resultObjectPos, resultObjectEnd, "status");
+    if (statusPos == string::npos || statusPos > resultObjectEnd) return -1;
+    const size_t statusValuePos = output.find(':', statusPos + 8);
+    if (statusValuePos == string::npos || statusValuePos > resultObjectEnd) return -1;
+    const size_t statusQuotePos = output.find_first_not_of(" \r\n\t", statusValuePos + 1);
+    if (statusQuotePos == string::npos || statusQuotePos > resultObjectEnd || output[statusQuotePos] != '"') return -1;
+    const size_t statusEndPos = output.find('"', statusQuotePos + 1);
+    if (statusEndPos == string::npos || statusEndPos > resultObjectEnd) return -1;
+
+    const string status = output.substr(statusQuotePos + 1, statusEndPos - statusQuotePos - 1);
+    if (status == "0x1" || status == "1") return 1;
+    if (status == "0x0" || status == "0") return 0;
+    return -1;
+}
+
 string Web3::EthCall(const string* from, const char* to, long gas, long gasPrice,
                      const string* value, const string* data) {
     // Build eth_call with optional gas, gasPrice, and value parameters

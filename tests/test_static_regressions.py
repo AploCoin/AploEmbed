@@ -188,13 +188,15 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('128 nonces per cycle', mining_readme)
         self.assertIn('re-reads `miner_params(address)`', mining_readme)
         self.assertIn('best-effort client-side guard', mining_readme)
-        self.assertIn('before block inclusion', mining_readme)
+        self.assertIn('status = 0x1', mining_readme)
+        self.assertIn('status = 0x0', mining_readme)
+        self.assertIn('final confirmation result', mining_readme)
         self.assertNotIn('tries 2,000 nonces per cycle', mining_readme)
 
     def test_mining_revalidates_work_before_broadcast(self):
         mining = read('examples/Aplo Mining/src/main.cpp')
         self.assertIn('bool minerParamsMatch(const MinerParams &left, const MinerParams &right)', mining)
-        self.assertIn('MinerParams freshParams = getMinerParams(address);', mining)
+        self.assertIn('MinerParams freshParams = getMinerParams(address, false);', mining)
         self.assertIn('if (!freshParams.valid)', mining)
         self.assertIn('if (!minerParamsMatch(params, freshParams))', mining)
         self.assertIn('mineHash(addressBytes, nonce, freshParams, freshHash);', mining)
@@ -206,8 +208,50 @@ class StaticRegressionTests(unittest.TestCase):
     def test_mining_does_not_report_broadcast_as_confirmation(self):
         mining = read('examples/Aplo Mining/src/main.cpp')
         self.assertIn('Transaction broadcast accepted:', mining)
-        self.assertIn('Execution is pending; verify the transaction receipt', mining)
-        self.assertNotIn('Mining transaction confirmed', mining)
+        self.assertIn('Execution is pending; waiting for on-chain confirmation.', mining)
+        self.assertIn('int EthGetTransactionReceiptStatus(const std::string* transactionHash);', read('src/Web3.h'))
+        self.assertIn('int Web3::EthGetTransactionReceiptStatus(const string* transactionHash)', read('src/Web3.cpp'))
+        self.assertIn('string normalizedHash = *transactionHash;', read('src/Web3.cpp'))
+        self.assertIn('normalizedHash.insert(0, "0x");', read('src/Web3.cpp'))
+        self.assertIn('const size_t resultKeyPos = output.find("\\\"result\\\"");', read('src/Web3.cpp'))
+        self.assertIn('const size_t errorPos = output.find("\\\"error\\\"");', read('src/Web3.cpp'))
+        self.assertIn('static size_t findJsonObjectEnd(const string& json, size_t objectStart)', read('src/Web3.cpp'))
+        self.assertIn('const size_t resultObjectEnd = findJsonObjectEnd(output, resultObjectPos);', read('src/Web3.cpp'))
+        self.assertIn('statusPos == string::npos || statusPos > resultObjectEnd', read('src/Web3.cpp'))
+        self.assertIn('static size_t findDirectJsonObjectKey(const string& json, size_t objectStart, size_t objectEnd, const char* key)', read('src/Web3.cpp'))
+        self.assertIn('const size_t statusPos = findDirectJsonObjectKey(output, resultObjectPos, resultObjectEnd, "status");', read('src/Web3.cpp'))
+        self.assertIn('MineConfirmation waitForMineConfirmation(const string &txHash)', mining)
+        self.assertIn('if (status == 1) return MINE_CONFIRMED;', mining)
+        self.assertIn('if (status == 0) return MINE_REVERTED;', mining)
+        self.assertIn('Successfully mined and confirmed transaction!', mining)
+        self.assertIn('Mining transaction reverted on-chain.', mining)
+        self.assertIn('Mining receipt unavailable after timeout; transaction may still be pending.', mining)
+        self.assertNotIn('still pending or reverted', mining)
+        self.assertNotIn('Successfully mined and submitted transaction!', mining)
+
+    def test_mining_restores_operational_diagnostics(self):
+        mining = read('examples/Aplo Mining/src/main.cpp')
+        for marker in [
+            'Miner Parameters:',
+            '  Last Block: ',
+            '  Total Mined: ',
+            '  Difficulty target: ',
+            'Note: lower target = harder mining; 0x00ff... is about 1 valid nonce per 256 random attempts.',
+            'Current Block: ',
+            'Cooldown active: ',
+            'Cooldown complete, attempting to mine...',
+            'Hash: ',
+            'Submitting mine transaction...',
+            'Waiting for block cooldown before next attempt...',
+        ]:
+            self.assertIn(marker, mining)
+        self.assertIn('const uint32_t blocksSinceLastMine = currentBlockNumber >= params.lastBlock', mining)
+        self.assertIn('const uint32_t blocksRemaining = BLOCK_COOLDOWN - blocksSinceLastMine;', mining)
+        self.assertNotIn('params.lastBlock + BLOCK_COOLDOWN', mining)
+        self.assertIn("Serial.print(F(\".\"));", mining)
+        loop_start = mining.index('void loop()\n{')
+        balances_start = mining.index('void queryBalances(const char *address)\n{')
+        self.assertIn('queryBalances(myAddress.c_str());', mining[loop_start:balances_start])
 
     def test_esp8266_mining_serial_literals_stay_in_flash(self):
         mining = read('examples/Aplo Mining/src/main.cpp')
@@ -295,13 +339,14 @@ class StaticRegressionTests(unittest.TestCase):
             self.assertNotIn('onStationModeGotIP', source)
             self.assertNotIn('onStationModeDHCPTimeout', source)
             self.assertIn('WiFi.localIP() != IPAddress(static_cast<uint32_t>(0))', source)
-            self.assertNotIn("Serial.print('.')", source)
             self.assertIn('WiFi.config(IPAddress(static_cast<uint32_t>(0)),', source)
             self.assertIn('45000UL', source)
             self.assertNotIn('WiFi.disconnect(false)', source)
             self.assertIn('#elif defined(ESP32)', source)
             if example == 'Aplo Mining':
                 self.assertIn('lastWifiRetryMs = 0;', source)
+            else:
+                self.assertNotIn("Serial.print(F(\".\"));", source)
 
     def test_examples_do_not_allocate_web3_dynamically_or_hang_forever(self):
         sources = [
