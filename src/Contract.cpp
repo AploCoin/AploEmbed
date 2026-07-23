@@ -55,6 +55,71 @@ static bool isFixedBytesType(const string& type, unsigned *bytes)
     return true;
 }
 
+static size_t rlpLengthByteCount(size_t value)
+{
+    size_t bytes = 0;
+    do {
+        ++bytes;
+        value >>= 8;
+    } while (value != 0);
+    return bytes;
+}
+
+static size_t rlpItemSize(const uint8_t *input, size_t inputLen)
+{
+    if (inputLen == 1 && input[0] < 0x80) return 1;
+    if (inputLen <= 55) return 1 + inputLen;
+    return 1 + rlpLengthByteCount(inputLen) + inputLen;
+}
+
+static size_t rlpListHeaderSize(size_t payloadSize)
+{
+    return payloadSize < 55 ? 1 : 1 + rlpLengthByteCount(payloadSize);
+}
+
+static void appendBigEndianLength(vector<uint8_t>& output, size_t value, size_t byteCount)
+{
+    for (size_t i = byteCount; i > 0; --i) {
+        output.push_back(static_cast<uint8_t>(value >> ((i - 1) * 8)));
+    }
+}
+
+static void appendRlpItem(vector<uint8_t>& output, const uint8_t *input, size_t inputLen)
+{
+    if (inputLen == 1 && input[0] == 0) {
+        output.push_back(0x80);
+        return;
+    }
+    if (inputLen == 1 && input[0] < 0x80) {
+        output.push_back(input[0]);
+        return;
+    }
+    if (inputLen <= 55) {
+        output.push_back(static_cast<uint8_t>(0x80 + inputLen));
+    } else {
+        const size_t lengthBytes = rlpLengthByteCount(inputLen);
+        output.push_back(static_cast<uint8_t>(0xb7 + lengthBytes));
+        appendBigEndianLength(output, inputLen, lengthBytes);
+    }
+    if (inputLen > 0) output.insert(output.end(), input, input + inputLen);
+}
+
+static void appendRlpItem(vector<uint8_t>& output, const vector<uint8_t>& input)
+{
+    appendRlpItem(output, input.data(), input.size());
+}
+
+static void appendRlpListHeader(vector<uint8_t>& output, size_t payloadSize)
+{
+    if (payloadSize < 55) {
+        output.push_back(static_cast<uint8_t>(0xc0 + payloadSize));
+        return;
+    }
+    const size_t lengthBytes = rlpLengthByteCount(payloadSize);
+    output.push_back(static_cast<uint8_t>(0xf7 + lengthBytes));
+    appendBigEndianLength(output, payloadSize, lengthBytes);
+}
+
 /**
  * Public functions
  * */
@@ -559,8 +624,6 @@ vector<uint8_t> Contract::RlpEncodeForRawTransaction(
     uint32_t nonceVal, unsigned long long gasPriceVal, uint32_t gasLimitVal,
     string *toStr, uint256_t *val, string *dataStr, uint8_t *sig, uint8_t recid)
 {
-
-
     vector<uint8_t> nonce = Util::ConvertNumberToVector(nonceVal);
     vector<uint8_t> gasPrice = Util::ConvertNumberToVector(gasPriceVal);
     vector<uint8_t> gasLimit = Util::ConvertNumberToVector(gasLimitVal);
@@ -568,45 +631,31 @@ vector<uint8_t> Contract::RlpEncodeForRawTransaction(
     vector<uint8_t> value = val->export_bits_truncate();
     vector<uint8_t> data = Util::ConvertHexToVector(dataStr);
 
-    vector<uint8_t> outputNonce = Util::RlpEncodeItemWithVector(nonce);
-    vector<uint8_t> outputGasPrice = Util::RlpEncodeItemWithVector(gasPrice);
-    vector<uint8_t> outputGasLimit = Util::RlpEncodeItemWithVector(gasLimit);
-    vector<uint8_t> outputTo = Util::RlpEncodeItemWithVector(to);
-    vector<uint8_t> outputValue = Util::RlpEncodeItemWithVector(value);
-    vector<uint8_t> outputData = Util::RlpEncodeItemWithVector(data);
+    uint256_t vv = recid + (web3->getChainId() * 2) + 35;
+    vector<uint8_t> V = vv.export_bits_truncate();
 
-    vector<uint8_t> R(sig, sig + (SIGNATURE_LENGTH / 2));
-    vector<uint8_t> S(sig + (SIGNATURE_LENGTH / 2), sig + SIGNATURE_LENGTH);
-    //V.push_back((uint8_t)(recid + web3->getChainId() * 2 + 35)); // according to EIP-155
-    uint256_t vv = recid + (web3->getChainId() * 2) + 35; // EIP-155 ensure long chainIds work correctly
-    vector<uint8_t> V = vv.export_bits_truncate(); //convert to bytes
-    vector<uint8_t> outputR = Util::RlpEncodeItemWithVector(R);
-    vector<uint8_t> outputS = Util::RlpEncodeItemWithVector(S);
-    vector<uint8_t> outputV = Util::RlpEncodeItemWithVector(V);
-    vector<uint8_t> encoded = Util::RlpEncodeWholeHeaderWithVector(
-        outputNonce.size() +
-        outputGasPrice.size() +
-        outputGasLimit.size() +
-        outputTo.size() +
-        outputValue.size() +
-        outputData.size() +
-        outputR.size() +
-        outputS.size() +
-        outputV.size());
-    encoded.reserve(encoded.size() + outputNonce.size() + outputGasPrice.size() +
-                    outputGasLimit.size() + outputTo.size() + outputValue.size() +
-                    outputData.size() + outputV.size() + outputR.size() +
-                    outputS.size());
+    const size_t payloadSize =
+        rlpItemSize(nonce.data(), nonce.size()) +
+        rlpItemSize(gasPrice.data(), gasPrice.size()) +
+        rlpItemSize(gasLimit.data(), gasLimit.size()) +
+        rlpItemSize(to.data(), to.size()) +
+        rlpItemSize(value.data(), value.size()) +
+        rlpItemSize(data.data(), data.size()) +
+        rlpItemSize(V.data(), V.size()) +
+        rlpItemSize(sig, SIGNATURE_LENGTH / 2) +
+        rlpItemSize(sig + (SIGNATURE_LENGTH / 2), SIGNATURE_LENGTH / 2);
 
-    encoded.insert(encoded.end(), outputNonce.begin(), outputNonce.end());
-    encoded.insert(encoded.end(), outputGasPrice.begin(), outputGasPrice.end());
-    encoded.insert(encoded.end(), outputGasLimit.begin(), outputGasLimit.end());
-    encoded.insert(encoded.end(), outputTo.begin(), outputTo.end());
-    encoded.insert(encoded.end(), outputValue.begin(), outputValue.end());
-    encoded.insert(encoded.end(), outputData.begin(), outputData.end());
-    encoded.insert(encoded.end(), outputV.begin(), outputV.end());
-    encoded.insert(encoded.end(), outputR.begin(), outputR.end());
-    encoded.insert(encoded.end(), outputS.begin(), outputS.end());
-
+    vector<uint8_t> encoded;
+    encoded.reserve(rlpListHeaderSize(payloadSize) + payloadSize);
+    appendRlpListHeader(encoded, payloadSize);
+    appendRlpItem(encoded, nonce);
+    appendRlpItem(encoded, gasPrice);
+    appendRlpItem(encoded, gasLimit);
+    appendRlpItem(encoded, to);
+    appendRlpItem(encoded, value);
+    appendRlpItem(encoded, data);
+    appendRlpItem(encoded, V);
+    appendRlpItem(encoded, sig, SIGNATURE_LENGTH / 2);
+    appendRlpItem(encoded, sig + (SIGNATURE_LENGTH / 2), SIGNATURE_LENGTH / 2);
     return encoded;
 }

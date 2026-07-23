@@ -4,6 +4,7 @@
 #include <AploContracts.h>
 #include <Util.h>
 #include <Crypto.h>
+#include <cmath>
 
 using std::string;
 
@@ -173,6 +174,7 @@ enum MineConfirmation {
 
 void queryStakingStatus(const char *address);
 MinerParams getMinerParams(const char *address, bool printDetails = true);
+void printMiningDifficultyStats(const uint8_t target[32]);
 bool attemptMining(const char *address);
 bool mineNonce(const uint8_t address[20], const MinerParams &params,
                uint8_t nonce[32], uint8_t hash[32]);
@@ -285,6 +287,50 @@ void queryStakingStatus(const char *address)
     }
 }
 
+void printMiningDifficultyStats(const uint8_t target[32])
+{
+    // Estimate target / 2^256 from the first non-zero 32-bit window. This keeps
+    // the diagnostic lightweight and avoids converting a full uint256 to float.
+    size_t firstNonZero = 0;
+    while (firstNonZero < 32 && target[firstNonZero] == 0) ++firstNonZero;
+
+    if (firstNonZero == 32) {
+        Serial.println(F("  Expected attempts per valid nonce: impossible (zero target)"));
+        Serial.println(F("  Chance per 2,000-nonce batch: 0.00%"));
+        return;
+    }
+
+    uint32_t leading = 0;
+    const size_t available = 32 - firstNonZero;
+    const size_t bytesToRead = available < 4 ? available : 4;
+    for (size_t i = 0; i < bytesToRead; ++i) {
+        leading = (leading << 8) | target[firstNonZero + i];
+    }
+    for (size_t i = bytesToRead; i < 4; ++i) leading <<= 8;
+
+    const int exponent = -8 * static_cast<int>(firstNonZero + 4);
+    const double singleHitProbability = ldexp(static_cast<double>(leading), exponent);
+    if (singleHitProbability <= 0.0) {
+        Serial.println(F("  Expected attempts per valid nonce: above numeric range"));
+        Serial.println(F("  Chance per 2,000-nonce batch: below 0.01%"));
+        return;
+    }
+
+    const double expectedAttempts = 1.0 / singleHitProbability;
+    const double batchChancePercent =
+        -expm1(HASH_ATTEMPTS_PER_CYCLE * log1p(-singleHitProbability)) * 100.0;
+
+    Serial.print(F("  Expected attempts per valid nonce: "));
+    if (expectedAttempts < 4294967295.0) {
+        Serial.println(static_cast<uint32_t>(expectedAttempts + 0.5));
+    } else {
+        Serial.println(expectedAttempts, 0);
+    }
+    Serial.print(F("  Chance per 2,000-nonce batch: "));
+    Serial.print(batchChancePercent, 2);
+    Serial.println(F("%"));
+}
+
 MinerParams getMinerParams(const char *address, bool printDetails)
 {
     MinerParams params = {};
@@ -317,7 +363,7 @@ MinerParams getMinerParams(const char *address, bool printDetails)
             Serial.println(totalMined.str(10).c_str());
             Serial.print(F("  Difficulty target: "));
             Serial.println(diffHex.c_str());
-            Serial.println(F("  Note: lower target = harder mining; 0x00ff... is about 1 valid nonce per 256 random attempts."));
+            printMiningDifficultyStats(params.currentDifficulty);
         }
     } else {
         Serial.println(F("ERROR: failed to read miner_params(address) from RPC."));
