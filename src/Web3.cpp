@@ -462,6 +462,16 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
 #if defined(ESP8266)
     string result;
     result.reserve(APLO_ESP8266_RPC_RESPONSE_MAX);
+    // Receipt payloads include logs and can exceed the general response buffer.
+    // Track only the status token while streaming so confirmation never needs
+    // the complete multi-kilobyte receipt in heap.
+    bool receiptStatusRequest = data->find("\"method\":\"eth_getTransactionReceipt\"") != string::npos;
+    const char *receiptSuccessToken = "\"status\":\"0x1\"";
+    const char *receiptRevertToken = "\"status\":\"0x0\"";
+    size_t receiptSuccessMatch = 0;
+    size_t receiptRevertMatch = 0;
+    bool receiptSuccess = false;
+    bool receiptReverted = false;
     // The standalone probe omits SNI. SNI-routed RPC endpoints can reject it
     // even when the normal BearSSL handshake supports MFLN. Request 1024 and
     // validate the negotiated result after the real hostname-aware connection.
@@ -563,6 +573,18 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
         while (client->available()) {
             const char c = static_cast<char>(client->read());
 #if defined(ESP8266)
+            if (receiptStatusRequest) {
+                if (!receiptSuccess && c == receiptSuccessToken[receiptSuccessMatch]) {
+                    if (receiptSuccessToken[++receiptSuccessMatch] == '\0') receiptSuccess = true;
+                } else if (!receiptSuccess) {
+                    receiptSuccessMatch = (c == receiptSuccessToken[0]) ? 1 : 0;
+                }
+                if (!receiptReverted && c == receiptRevertToken[receiptRevertMatch]) {
+                    if (receiptRevertToken[++receiptRevertMatch] == '\0') receiptReverted = true;
+                } else if (!receiptReverted) {
+                    receiptRevertMatch = (c == receiptRevertToken[0]) ? 1 : 0;
+                }
+            }
             if (result.size() < APLO_ESP8266_RPC_RESPONSE_MAX) {
                 result += c;
             } else {
@@ -583,8 +605,15 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
 
 #if defined(ESP8266)
     if (responseOverflow) {
+        if (receiptStatusRequest && receiptSuccess) {
+            endpoint.retryAfterMs = 0;
+            return "{\"result\":{\"status\":\"0x1\"}}";
+        }
+        if (receiptStatusRequest && receiptReverted) {
+            endpoint.retryAfterMs = 0;
+            return "{\"result\":{\"status\":\"0x0\"}}";
+        }
         Serial.println("HTTP response exceeds ESP8266 buffer");
-        endpoint.retryAfterMs = millis() + APLO_RPC_FAILURE_COOLDOWN_MS;
         return "";
     }
     endpoint.retryAfterMs = 0;
