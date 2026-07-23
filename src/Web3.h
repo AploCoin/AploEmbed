@@ -142,6 +142,7 @@ private:
 #if defined(ESP8266)
         int tlsBufferSize;
 #endif
+        unsigned long retryAfterMs;
         bool valid;
 
         RpcEndpoint()
@@ -149,6 +150,7 @@ private:
 #if defined(ESP8266)
             , tlsBufferSize(0)
 #endif
+            , retryAfterMs(0)
             , valid(false) {}
     };
 
