@@ -92,7 +92,9 @@ Cooldown complete, attempting to mine...
 
 Finding a valid nonce is probabilistic. With the common `0x00ff...` target, roughly 1 in 256 random hashes should be valid. The example tries 128 nonces per cycle, then fetches fresh miner state on the next cycle so it does not spend long periods hashing an obsolete challenge.
 
-Before broadcasting a found nonce, the example re-reads `miner_params(address)`, verifies that `last_block`, difficulty, `prev_hash`, and `total_mined` still match, and recomputes the proof locally. If another miner already changed the challenge, the stale nonce is discarded without spending gas. This is a best-effort client-side guard: the challenge can still change after the final check and before block inclusion, so the contract may still reject a raced transaction. A successful RPC broadcast is only pending execution; verify the transaction receipt before treating the mine as successful.
+A successful submission now remains pending until the example reads its transaction receipt. It prints success only for receipt `status = 0x1`; a `status = 0x0` receipt is reported as reverted. While mining, the serial monitor includes the current miner parameters, block/cooldown state, progress dots, nonce, computed hash, target, broadcast hash, and final confirmation result.
+
+Before broadcasting a found nonce, the example re-reads `miner_params(address)`, verifies that `last_block`, difficulty, `prev_hash`, and `total_mined` still match, and recomputes the proof locally. If another miner already changed the challenge, the stale nonce is discarded without spending gas. This is a best-effort client-side guard: the challenge can still change after the final check and before block inclusion, so the contract may still reject a raced transaction. The receipt check makes that rejection visible instead of treating RPC broadcast acceptance as a successful mine.
 
 ## Contract calls used
 
