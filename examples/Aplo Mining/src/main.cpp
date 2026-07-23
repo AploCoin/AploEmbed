@@ -137,7 +137,7 @@ string myAddress;
 
 // Mining parameters
 #define BLOCK_COOLDOWN 20            // Minimum blocks between mine attempts
-#define HASH_ATTEMPTS_PER_CYCLE 2000 // Nonces to try before checking block height (~8 expected hits at 0x00ff...)
+#define HASH_ATTEMPTS_PER_CYCLE 128  // Keep work batches short so global mining state stays fresh
 #define CYCLE_DELAY_MS 1000          // Delay between hash cycles (ms)
 
 // WiFi reconnect parameters
@@ -168,6 +168,9 @@ MinerParams getMinerParams(const char *address);
 bool attemptMining(const char *address);
 bool mineNonce(const uint8_t address[20], const MinerParams &params,
                uint8_t nonce[32], uint8_t hash[32]);
+void mineHash(const uint8_t address[20], const uint8_t nonce[32],
+              const MinerParams &params, uint8_t hash[32]);
+bool minerParamsMatch(const MinerParams &left, const MinerParams &right);
 bool submitMineTransaction(const uint8_t nonce[32]);
 void queryBalances(const char *address);
 
@@ -339,6 +342,25 @@ bool attemptMining(const char *address)
             Serial.println(F("\n\nVALID NONCE FOUND!"));
             Serial.print(F("Nonce: "));
             Serial.println(Util::ConvertBytesToHex(nonce, 32).c_str());
+
+            // Another miner can update the global challenge while this device
+            // searches. Never spend gas on work that is already known to be stale.
+            MinerParams freshParams = getMinerParams(address);
+            if (!freshParams.valid) {
+                Serial.println(F("Mining submission paused: unable to revalidate miner params."));
+                return false;
+            }
+            if (!minerParamsMatch(params, freshParams)) {
+                Serial.println(F("Discarding stale nonce: mining challenge changed."));
+                return false;
+            }
+
+            uint8_t freshHash[32];
+            mineHash(addressBytes, nonce, freshParams, freshHash);
+            if (memcmp(freshHash, freshParams.currentDifficulty, 32) >= 0) {
+                Serial.println(F("Discarding nonce: proof failed final local validation."));
+                return false;
+            }
             return submitMineTransaction(nonce);
         }
 
@@ -353,6 +375,13 @@ bool mineNonce(const uint8_t address[20], const MinerParams &params,
 {
     if (!Crypto::RandomBytes(nonce, sizeof(nonce[0]) * 32)) return false;
 
+    mineHash(address, nonce, params, hash);
+    return true;
+}
+
+void mineHash(const uint8_t address[20], const uint8_t nonce[32],
+              const MinerParams &params, uint8_t hash[32])
+{
     uint8_t packed[148];
     memcpy(packed, address, 20);
     memcpy(packed + 20, nonce, 32);
@@ -360,7 +389,14 @@ bool mineNonce(const uint8_t address[20], const MinerParams &params,
     memcpy(packed + 84, params.prevHash, 32);
     memcpy(packed + 116, params.totalMined, 32);
     Crypto::Keccak256(packed, sizeof(packed), hash);
-    return true;
+}
+
+bool minerParamsMatch(const MinerParams &left, const MinerParams &right)
+{
+    return left.lastBlock == right.lastBlock &&
+           memcmp(left.currentDifficulty, right.currentDifficulty, 32) == 0 &&
+           memcmp(left.prevHash, right.prevHash, 32) == 0 &&
+           memcmp(left.totalMined, right.totalMined, 32) == 0;
 }
 
 bool submitMineTransaction(const uint8_t nonce[32])
@@ -377,6 +413,7 @@ bool submitMineTransaction(const uint8_t nonce[32])
 
     Serial.print(F("Transaction broadcast accepted: "));
     Serial.println(txHash.c_str());
+    Serial.println(F("Execution is pending; verify the transaction receipt before treating the mine as successful."));
 
     return true;
 }
