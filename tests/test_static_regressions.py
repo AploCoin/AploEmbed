@@ -265,6 +265,8 @@ class StaticRegressionTests(unittest.TestCase):
             '  Difficulty target: ',
             'Expected attempts per valid nonce: ',
             'Chance per 2,000-nonce batch: ',
+            'Serial.print(mantissa, 2);',
+            'Serial.print(F("e+"));',
             'Current Block: ',
             'Cooldown active: ',
             'Cooldown complete, attempting to mine...',
