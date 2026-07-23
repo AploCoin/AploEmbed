@@ -73,6 +73,21 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertNotIn('WiFiClientSecure scopedClient;', web3.split('#if defined(ESP8266)', 1)[1].split('#else', 1)[0])
         self.assertIn('#else\n            result += c;\n#endif', web3)
 
+    def test_esp8266_tls_initializes_x509_time_and_reports_bearssl_failures(self):
+        web3 = read('src/Web3.cpp')
+        self.assertIn('configTime(0, 0, "pool.ntp.org", "time.nist.gov")', web3)
+        self.assertIn('client->setX509Time(now);', web3)
+        self.assertIn('client->getLastSSLError(sslError, sizeof(sslError))', web3)
+        self.assertIn('ESP8266 TLS error', web3)
+        self.assertNotIn('client->setInsecure(); // ESP8266 workaround', web3)
+
+    def test_rpc_failover_has_endpoint_failure_cooldown(self):
+        header = read('src/Web3.h')
+        web3 = read('src/Web3.cpp')
+        self.assertIn('unsigned long retryAfterMs;', header)
+        self.assertIn('endpoint.retryAfterMs', web3)
+        self.assertIn('APLO_RPC_FAILURE_COOLDOWN_MS', web3)
+
     def test_rpc_endpoint_state_is_owned_and_does_not_use_strdup(self):
         header = read('src/Web3.h')
         web3 = read('src/Web3.cpp')

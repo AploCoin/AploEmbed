@@ -13,6 +13,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <cstdio>
+#include <ctime>
 #include "nodes.h"
 
 // Helper function to initialize Web3 instance
@@ -20,6 +21,11 @@ using std::string;
 using std::vector;
 
 #if defined(ESP8266)
+#define APLO_RPC_FAILURE_COOLDOWN_MS 30000UL
+#define APLO_X509_TIME_RETRY_MS 30000UL
+#define APLO_X509_TIME_WAIT_MS 15000UL
+#define APLO_VALID_X509_EPOCH 1609459200L
+
 // ESP8266 BearSSL allocates a shared 6200-byte secondary stack from its client
 // constructor. The singleton is first constructed by initWeb3(); using a
 // function-local static avoids cross-translation-unit initialization order
@@ -28,6 +34,37 @@ static WiFiClientSecure& getEsp8266Client()
 {
     static WiFiClientSecure transport;
     return transport;
+}
+
+static bool esp8266DeadlineReached(unsigned long deadline)
+{
+    return deadline == 0 || static_cast<long>(millis() - deadline) >= 0;
+}
+
+static bool ensureEsp8266X509Time()
+{
+    static bool configured = false;
+    static unsigned long retryAfterMs = 0;
+
+    if (time(nullptr) >= APLO_VALID_X509_EPOCH) return true;
+    if (!esp8266DeadlineReached(retryAfterMs)) return false;
+
+    if (!configured) {
+        configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+        configured = true;
+    }
+
+    const unsigned long startedAt = millis();
+    while (time(nullptr) < APLO_VALID_X509_EPOCH &&
+           millis() - startedAt < APLO_X509_TIME_WAIT_MS) {
+        delay(250);
+        yield();
+    }
+
+    if (time(nullptr) >= APLO_VALID_X509_EPOCH) return true;
+    retryAfterMs = millis() + APLO_X509_TIME_RETRY_MS;
+    Serial.println(F("TLS paused: unable to synchronize certificate time"));
+    return false;
 }
 #endif
 
@@ -412,6 +449,14 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
         return "";
     }
 
+#if defined(ESP8266)
+    if (!esp8266DeadlineReached(endpoint.retryAfterMs)) return "";
+    if (certMode != CERT_INSECURE && !ensureEsp8266X509Time()) {
+        endpoint.retryAfterMs = millis() + APLO_RPC_FAILURE_COOLDOWN_MS;
+        return "";
+    }
+#endif
+
     host = endpoint.host.c_str();
 
 #if defined(ESP8266)
@@ -435,10 +480,23 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
     client = &scopedClient;
 #endif
     setupCert();
+#if defined(ESP8266)
+    const time_t now = time(nullptr);
+    client->setX509Time(now);
+#endif
 
     if (!client->connect(host, endpoint.port)) {
         Serial.print("Unable to connect to Host: ");
         Serial.println(host);
+#if defined(ESP8266)
+        char sslError[128];
+        const int sslErrorCode = client->getLastSSLError(sslError, sizeof(sslError));
+        Serial.print(F("ESP8266 TLS error "));
+        Serial.print(sslErrorCode);
+        Serial.print(F(": "));
+        Serial.println(sslError);
+        endpoint.retryAfterMs = millis() + APLO_RPC_FAILURE_COOLDOWN_MS;
+#endif
         client->stop();
         delay(100);
         client = nullptr;
@@ -448,6 +506,7 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
     if (!client->getMFLNStatus()) {
         Serial.print("RPC host did not negotiate ESP8266 TLS MFLN: ");
         Serial.println(host);
+        endpoint.retryAfterMs = millis() + APLO_RPC_FAILURE_COOLDOWN_MS;
         client->stop();
         client = nullptr;
         return "";
@@ -491,6 +550,9 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
 
     if (!headersComplete) {
         Serial.println("Invalid or oversized HTTP response headers");
+#if defined(ESP8266)
+        endpoint.retryAfterMs = millis() + APLO_RPC_FAILURE_COOLDOWN_MS;
+#endif
         client->stop();
         client = nullptr;
         return "";
@@ -522,8 +584,10 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
 #if defined(ESP8266)
     if (responseOverflow) {
         Serial.println("HTTP response exceeds ESP8266 buffer");
+        endpoint.retryAfterMs = millis() + APLO_RPC_FAILURE_COOLDOWN_MS;
         return "";
     }
+    endpoint.retryAfterMs = 0;
 #endif
     return result;
 }
