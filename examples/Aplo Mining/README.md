@@ -90,7 +90,7 @@ Current Block: ...
 Cooldown complete, attempting to mine...
 ```
 
-Finding a valid nonce is probabilistic. With the common `0x00ff...` target, roughly 1 in 256 random hashes should be valid. The example tries 128 nonces per cycle, then fetches fresh miner state on the next cycle so it does not spend long periods hashing an obsolete challenge.
+Finding a valid nonce is probabilistic. A `0x00ff...` target accepts roughly 1 in 256 random hashes, while the currently observed `0x0000ffff...` target accepts roughly 1 in 65,536. The example tries 2000 nonces per cycle, yields periodically for the watchdog, and fetches fresh miner state before the next batch. At `0x0000ffff...`, one 2000-nonce batch has about a 3% chance of finding a candidate; the expected average is about 33 batches.
 
 A successful submission now remains pending until the example reads its transaction receipt. It prints success only for receipt `status = 0x1`; a `status = 0x0` receipt is reported as reverted. While mining, the serial monitor includes the current miner parameters, block/cooldown state, progress dots, nonce, computed hash, target, broadcast hash, and final confirmation result.
 
