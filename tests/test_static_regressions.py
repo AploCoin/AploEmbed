@@ -162,7 +162,7 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('SetupContractData("mine(bytes32)"', web3)
         self.assertIn('APLO Balance:', mining)
         self.assertIn('Gas Balance (GAPLO):', mining)
-        self.assertIn('HASH_ATTEMPTS_PER_CYCLE 2000', mining)
+        self.assertIn('HASH_ATTEMPTS_PER_CYCLE 128', mining)
         self.assertIn('Web3 web3Instance;', mining)
         self.assertIn('Web3 *web3 = &web3Instance;', mining)
         self.assertNotIn('web3 = new Web3();', mining)
@@ -183,6 +183,31 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertNotIn('String nonce', hot_loop)
         self.assertNotIn('String hash', hot_loop)
         self.assertNotIn('string packed', hot_loop)
+
+        mining_readme = read('examples/Aplo Mining/README.md')
+        self.assertIn('128 nonces per cycle', mining_readme)
+        self.assertIn('re-reads `miner_params(address)`', mining_readme)
+        self.assertIn('best-effort client-side guard', mining_readme)
+        self.assertIn('before block inclusion', mining_readme)
+        self.assertNotIn('tries 2,000 nonces per cycle', mining_readme)
+
+    def test_mining_revalidates_work_before_broadcast(self):
+        mining = read('examples/Aplo Mining/src/main.cpp')
+        self.assertIn('bool minerParamsMatch(const MinerParams &left, const MinerParams &right)', mining)
+        self.assertIn('MinerParams freshParams = getMinerParams(address);', mining)
+        self.assertIn('if (!freshParams.valid)', mining)
+        self.assertIn('if (!minerParamsMatch(params, freshParams))', mining)
+        self.assertIn('mineHash(addressBytes, nonce, freshParams, freshHash);', mining)
+        self.assertIn('if (memcmp(freshHash, freshParams.currentDifficulty, 32) >= 0)', mining)
+        stale_check = mining.index('if (!minerParamsMatch(params, freshParams))')
+        submit = mining.index('return submitMineTransaction(nonce);')
+        self.assertLess(stale_check, submit)
+
+    def test_mining_does_not_report_broadcast_as_confirmation(self):
+        mining = read('examples/Aplo Mining/src/main.cpp')
+        self.assertIn('Transaction broadcast accepted:', mining)
+        self.assertIn('Execution is pending; verify the transaction receipt', mining)
+        self.assertNotIn('Mining transaction confirmed', mining)
 
     def test_esp8266_mining_serial_literals_stay_in_flash(self):
         mining = read('examples/Aplo Mining/src/main.cpp')

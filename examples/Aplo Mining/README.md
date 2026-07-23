@@ -90,7 +90,9 @@ Current Block: ...
 Cooldown complete, attempting to mine...
 ```
 
-Finding a valid nonce is probabilistic. With the common `0x00ff...` target, roughly 1 in 256 random hashes should be valid. The example therefore tries 2,000 nonces per cycle; repeated misses over many cycles usually indicate a hashing/formatting bug rather than normal luck.
+Finding a valid nonce is probabilistic. With the common `0x00ff...` target, roughly 1 in 256 random hashes should be valid. The example tries 128 nonces per cycle, then fetches fresh miner state on the next cycle so it does not spend long periods hashing an obsolete challenge.
+
+Before broadcasting a found nonce, the example re-reads `miner_params(address)`, verifies that `last_block`, difficulty, `prev_hash`, and `total_mined` still match, and recomputes the proof locally. If another miner already changed the challenge, the stale nonce is discarded without spending gas. This is a best-effort client-side guard: the challenge can still change after the final check and before block inclusion, so the contract may still reject a raced transaction. A successful RPC broadcast is only pending execution; verify the transaction receipt before treating the mine as successful.
 
 ## Contract calls used
 
