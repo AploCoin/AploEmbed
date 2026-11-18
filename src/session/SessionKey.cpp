@@ -1,5 +1,5 @@
 #include "SessionKeys.h"
-#include "internal/SessionEncoding.h"
+#include "SessionEncoding.h"
 #include "trezor/sha3.h"
 extern "C" {
 #include "trezor/memzero.h"
@@ -10,7 +10,7 @@ extern "C" {
 namespace aplo {
 using namespace detail;
 // Defined by the Arduino Web3 adapter; native tests supply the OS CSPRNG.
-bool SessionPlatformRandom(uint8_t* decodeHex, size_t length);
+bool SessionPlatformRandom(uint8_t* bytes, size_t length);
 
 static bool isValidScalar(const uint8_t* secret) {
     bignum256 scalar;

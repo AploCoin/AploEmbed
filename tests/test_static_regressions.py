@@ -10,18 +10,18 @@ def read(rel):
 
 class StaticRegressionTests(unittest.TestCase):
     def test_no_ambiguous_arduino_byte_casts(self):
-        self.assertNotIn('byte(', read('src/KeyID.cpp'))
-        self.assertNotIn('byte extract', read('src/Util.cpp'))
+        self.assertNotIn('byte(', read('src/crypto/KeyID.cpp'))
+        self.assertNotIn('byte extract', read('src/encoding/Util.cpp'))
 
     def test_json_rpc_payloads_are_not_backslash_escaped(self):
-        web3 = read('src/Web3.cpp')
+        web3 = read('src/rpc/Web3.cpp')
         self.assertNotIn('\\\\\\\"jsonrpc', web3)
         self.assertNotIn('string p = "[\\\\\\\""', web3)
         self.assertIn('return "{\\\"jsonrpc\\\":\\\"2.0', web3)
         self.assertIn('[\\\"" + *address + "\\\",\\\"latest\\\"]', web3)
 
     def test_aplo_builtin_helpers_use_generic_abi_encoding(self):
-        web3 = read('src/Web3.cpp')
+        web3 = read('src/rpc/Web3.cpp')
         for selector in ['0x7a766460', '0xa9d637e1', '0xe31305ae', '0x70a08231', '0x2fdc505e']:
             self.assertNotIn(selector, web3)
         for signature in [
@@ -35,8 +35,8 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertTrue((ROOT / 'src' / 'trezor' / 'rand.h').exists())
         self.assertNotIn('Trezor', [p.name for p in (ROOT / 'src').iterdir()])
         self.assertIn('#include "trezor/rand.h"', read('src/KeyID.h'))
-        self.assertIn('#include "trezor/secp256k1.h"', read('src/Crypto.cpp'))
-        self.assertIn('#include "trezor/ecdsa.h"', read('src/Crypto.cpp'))
+        self.assertIn('#include "trezor/secp256k1.h"', read('src/crypto/Crypto.cpp'))
+        self.assertIn('#include "trezor/ecdsa.h"', read('src/crypto/Crypto.cpp'))
 
     def test_trezor_rfc6979_is_compiled_once(self):
         self.assertTrue((ROOT / 'src' / 'trezor' / 'rfc6979.c').exists())
@@ -45,13 +45,13 @@ class StaticRegressionTests(unittest.TestCase):
 
     def test_cert_bundle_size_overload_exists_for_esp32_core_3(self):
         header = read('src/Web3.h')
-        impl = read('src/Web3.cpp')
+        impl = read('src/rpc/Web3.cpp')
         self.assertIn('setCertificateBundle(const uint8_t* bundle_start, size_t bundle_size)', header)
         self.assertIn('certBundleSize', header)
         self.assertIn('setCACertBundle(certBundle, certBundleSize)', impl)
 
     def test_esp32_and_http_runtime_regressions(self):
-        web3 = read('src/Web3.cpp')
+        web3 = read('src/rpc/Web3.cpp')
         self.assertIn('client->print(data->c_str())', web3)
         self.assertIn('headerState == 0x0d0a0d0aUL', web3)
         self.assertIn('node.rfind("https://", 0)', web3)
@@ -61,7 +61,7 @@ class StaticRegressionTests(unittest.TestCase):
 
     def test_esp8266_transport_uses_bounded_response_storage(self):
         header = read('src/Web3.h')
-        web3 = read('src/Web3.cpp')
+        web3 = read('src/rpc/Web3.cpp')
         self.assertIn('APLO_ESP8266_RPC_RESPONSE_MAX', header)
         self.assertIn('static WiFiClientSecure& getEsp8266Client()', web3)
         self.assertNotIn('esp8266ResponseBuffer', header)
@@ -76,7 +76,7 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('#else\n            result += c;\n#endif', web3)
 
     def test_esp8266_tls_initializes_x509_time_and_reports_bearssl_failures(self):
-        web3 = read('src/Web3.cpp')
+        web3 = read('src/rpc/Web3.cpp')
         self.assertIn('configTime(0, 0, "pool.ntp.org", "time.nist.gov")', web3)
         self.assertIn('client->setX509Time(now);', web3)
         self.assertIn('client->getLastSSLError(sslError, sizeof(sslError))', web3)
@@ -85,14 +85,14 @@ class StaticRegressionTests(unittest.TestCase):
 
     def test_rpc_failover_has_endpoint_failure_cooldown(self):
         header = read('src/Web3.h')
-        web3 = read('src/Web3.cpp')
+        web3 = read('src/rpc/Web3.cpp')
         self.assertIn('unsigned long retryAfterMs;', header)
         self.assertIn('endpoint.retryAfterMs', web3)
         self.assertIn('APLO_RPC_FAILURE_COOLDOWN_MS', web3)
 
     def test_rpc_endpoint_state_is_owned_and_does_not_use_strdup(self):
         header = read('src/Web3.h')
-        web3 = read('src/Web3.cpp')
+        web3 = read('src/rpc/Web3.cpp')
         self.assertIn('struct RpcEndpoint', header)
         self.assertIn('RpcEndpoint primaryEndpoint', header)
         self.assertIn('RpcEndpoint fallbackEndpoint', header)
@@ -101,7 +101,7 @@ class StaticRegressionTests(unittest.TestCase):
 
     def test_web3_resources_have_raii_lifecycle(self):
         header = read('src/Web3.h')
-        web3 = read('src/Web3.cpp')
+        web3 = read('src/rpc/Web3.cpp')
         self.assertIn('~Web3();', header)
         self.assertIn('Web3::~Web3()', web3)
         self.assertNotIn('new (mem) WiFiClientSecure', web3)
@@ -109,10 +109,10 @@ class StaticRegressionTests(unittest.TestCase):
 
     def test_contract_signing_path_has_no_per_transaction_leaks(self):
         header = read('src/Contract.h')
-        contract = read('src/Contract.cpp')
+        contract = read('src/abi/Contract.cpp')
         util_header = read('src/Util.h')
-        util = read('src/Util.cpp')
-        web3 = read('src/Web3.cpp')
+        util = read('src/encoding/Util.cpp')
+        web3 = read('src/rpc/Web3.cpp')
         self.assertIn('~Contract();', header)
         self.assertIn('Contract::~Contract()', contract)
         self.assertIn('uint8_t hash[ETHERS_KECCAK256_LENGTH];', contract)
@@ -148,8 +148,8 @@ class StaticRegressionTests(unittest.TestCase):
 
     def test_json_result_parsing_is_centralized_in_tag_reader(self):
         tag_reader = read('src/TagReader/TagReader.cpp')
-        web3 = read('src/Web3.cpp')
-        util = read('src/Util.cpp')
+        web3 = read('src/rpc/Web3.cpp')
+        util = read('src/encoding/Util.cpp')
         self.assertIn('size_t TagReader::parse(char *jsonBuffer)', tag_reader)
         self.assertIn("*p = '\\0';", tag_reader)
         self.assertIn('TagReader reader;', web3)
@@ -157,9 +157,9 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('TagReader reader;', util)
 
     def test_web3e_issue_regressions_are_hardened(self):
-        web3 = read('src/Web3.cpp')
-        contract = read('src/Contract.cpp')
-        keyid = read('src/KeyID.cpp')
+        web3 = read('src/rpc/Web3.cpp')
+        contract = read('src/abi/Contract.cpp')
+        keyid = read('src/crypto/KeyID.cpp')
         self.assertIn('if (lengthIndex <= 32)', web3)
         self.assertIn('index < static_cast<int>(v->size())', web3)
         self.assertIn('isSizedUintType', contract)
@@ -184,14 +184,14 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('#define USE_PRECOMPUTED_CP 1', options)
 
     def test_esp8266_tls_uses_sni_aware_mfln_handshake(self):
-        web3 = read('src/Web3.cpp')
+        web3 = read('src/rpc/Web3.cpp')
         esp8266_exec = web3[web3.index('#if defined(ESP8266)', web3.index('string Web3::exec')):web3.index('#else', web3.index('#if defined(ESP8266)', web3.index('string Web3::exec')))]
         self.assertNotIn('probeMaxFragmentLength', esp8266_exec)
         self.assertIn('endpoint.tlsBufferSize = 1024', esp8266_exec)
         self.assertIn('client->getMFLNStatus()', web3)
 
     def test_wei_string_conversion_is_bounds_safe(self):
-        util = read('src/Util.cpp')
+        util = read('src/encoding/Util.cpp')
         conversion = util[util.index('string Util::ConvertWeiToEthString'):util.index('string Util::ConvertEthToWei')]
         self.assertNotIn('char buffer[65]', conversion)
         self.assertNotIn('memcpy(', conversion)
@@ -200,7 +200,7 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('decimals > 77', conversion)
 
     def test_convert_to_wei_uses_bounded_formatting(self):
-        util = read('src/Util.cpp')
+        util = read('src/encoding/Util.cpp')
         conversion = util[util.index('uint256_t Util::ConvertToWei'):util.index('string Util::ConvertWeiToEthString')]
         self.assertNotIn('sprintf(', conversion)
         self.assertIn('snprintf(', conversion)
@@ -267,7 +267,7 @@ class StaticRegressionTests(unittest.TestCase):
 
     def test_keyid_uses_raii_and_does_not_stall_on_eeprom_failure(self):
         header = read('src/KeyID.h')
-        impl = read('src/KeyID.cpp')
+        impl = read('src/crypto/KeyID.cpp')
         self.assertIn('BYTE privateKeyBytes[ETHERS_PRIVATEKEY_LENGTH];', header)
         self.assertIn('Crypto crypto;', header)
         self.assertNotIn('new BYTE[', impl)
@@ -277,7 +277,7 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('if (!EEPROM.commit())', impl)
 
     def test_rpc_url_parser_validates_ports_without_exceptions(self):
-        web3 = read('src/Web3.cpp')
+        web3 = read('src/rpc/Web3.cpp')
         self.assertNotIn('stoi(', web3)
         self.assertIn('parsePort', web3)
         self.assertIn('portValue > 65535UL', web3)
@@ -285,7 +285,7 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn("const size_t colonPos = authority.rfind(':')", web3)
 
     def test_get_string_has_no_debug_serial_output(self):
-        web3 = read('src/Web3.cpp')
+        web3 = read('src/rpc/Web3.cpp')
         get_string = web3[web3.index('string Web3::getString'):web3.index('bool Web3::setupCert', web3.index('string Web3::getString'))]
         self.assertNotIn('Serial.', get_string)
 
@@ -300,10 +300,10 @@ class StaticRegressionTests(unittest.TestCase):
         subprocess.run(['python3', str(ROOT / 'tests' / 'build_examples.py')], check=True, timeout=2400)
 
     def test_remaining_runtime_audit_regressions_are_hardened(self):
-        web3 = read('src/Web3.cpp')
-        script = read('src/ScriptClient.cpp')
-        contract = read('src/Contract.cpp')
-        util = read('src/Util.cpp')
+        web3 = read('src/rpc/Web3.cpp')
+        script = read('src/rpc/ScriptClient.cpp')
+        contract = read('src/abi/Contract.cpp')
+        util = read('src/encoding/Util.cpp')
         crypto_header = read('src/Crypto.h')
 
         self.assertIn('HTTP RPC endpoints are not supported', web3)
@@ -317,7 +317,7 @@ class StaticRegressionTests(unittest.TestCase):
 
     def test_money_examples_use_exact_decimal_strings(self):
         util_header = read('src/Util.h')
-        util = read('src/Util.cpp')
+        util = read('src/encoding/Util.cpp')
         send = read('examples/Aplo Send Transaction/src/main.cpp')
         staking = read('examples/Aplo Staking/src/main.cpp')
         self.assertIn('ConvertDecimalToWei(const std::string& amount, int decimals)', util_header)
@@ -328,7 +328,7 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('STAKE_AMOUNT_APLO "1000"', staking)
 
     def test_hex_formatting_avoids_unbounded_alloca(self):
-        util = read('src/Util.cpp')
+        util = read('src/encoding/Util.cpp')
         for function in ['PlainVectorToString', 'ConvertBytesToHex', 'ConvertBase']:
             start = util.index(function)
             end = util.find('\n}', start) + 2
@@ -354,7 +354,7 @@ class StaticRegressionTests(unittest.TestCase):
 
     def test_examples_derive_sender_address_from_private_key(self):
         crypto_header = read('src/Crypto.h')
-        crypto_impl = read('src/Crypto.cpp')
+        crypto_impl = read('src/crypto/Crypto.cpp')
         self.assertIn('PrivateKeyToAddress(const char *privateKey)', crypto_header)
         self.assertIn('PrivateKeyToPublic(privateKeyBytes, publicKey)', crypto_impl)
         self.assertIn('PublicKeyToAddress(publicKey, address)', crypto_impl)

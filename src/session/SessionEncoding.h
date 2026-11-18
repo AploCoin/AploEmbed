@@ -1,6 +1,6 @@
 #ifndef APLO_INTERNAL_SESSION_ENCODING_H
 #define APLO_INTERNAL_SESSION_ENCODING_H
-#include "../SessionKeys.h"
+#include "SessionKeys.h"
 
 namespace aplo {
 namespace detail {

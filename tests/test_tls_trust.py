@@ -94,10 +94,10 @@ def build(work, generated=None):
         *[
             ROOT / "src" / n
             for n in (
-                "Web3.cpp",
-                "Contract.cpp",
-                "Crypto.cpp",
-                "Util.cpp",
+                "rpc/Web3.cpp",
+                "abi/Contract.cpp",
+                "crypto/Crypto.cpp",
+                "encoding/Util.cpp",
                 "internal/JsonRpcParser.cpp",
                 "TagReader/TagReader.cpp",
                 "uint256/uint128_t.cpp",

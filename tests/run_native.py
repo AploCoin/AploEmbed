@@ -21,14 +21,15 @@ FLAGS = [
 ]
 CRYPTO = ["bignum", "ecdsa", "secp256k1", "sha3", "sha2", "hmac", "rfc6979", "memzero"]
 CPP_SOURCES = [
-    "src/SessionKeys.cpp",
-    "src/SessionKey.cpp",
-    "src/SessionTransaction.cpp",
-    "src/SessionRpc.cpp",
+    "src/session/SessionKeys.cpp",
+    "src/session/SessionKey.cpp",
+    "src/session/SessionSerial.cpp",
+    "src/session/SessionTransaction.cpp",
+    "src/session/SessionRpc.cpp",
     "src/internal/JsonRpcParser.cpp",
-    "src/Contract.cpp",
-    "src/Crypto.cpp",
-    "src/Util.cpp",
+    "src/abi/Contract.cpp",
+    "src/crypto/Crypto.cpp",
+    "src/encoding/Util.cpp",
     "src/TagReader/TagReader.cpp",
     "src/uint256/uint128_t.cpp",
     "src/uint256/uint256_t.cpp",

@@ -1,6 +1,6 @@
 #include "SessionKeys.h"
 #include "internal/JsonRpcParser.h"
-#include "internal/SessionEncoding.h"
+#include "SessionEncoding.h"
 
 namespace aplo {
 using namespace detail;

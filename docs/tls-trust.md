@@ -42,7 +42,7 @@ APLO_TRUST_PROFILE=/path/to/my-trust.json \
 
 A custom domain with a suitable public chain can use `--public-set`; a private RPC uses `--ca`. Each URL requires its own explicit trust declaration. Repeat `--ca` or `--fallback-ca` during a planned root overlap. Paths and hashes in the JSON are public inputs; keep that JSON and PEM files together when moving a profile. The configure command verifies public-only PEM, root/self-signature, CA/keyCertSign and the current validity. Private keys, mixed cert/key files and leaf certificates are rejected, never copied. Provision a trustworthy clock separately.
 
-The same environment variable works with all four SDK examples, MiningEmbed SessionMining and FirmwareEmbed. MiningEmbed additionally needs `APLOEMBED_PATH` and `MININGEMBED_PATH` for its existing checkout dependencies. For firmware, open the selected board under `FirmwareEmbed/Firmware/` and run `scripts/configure_dependencies.py` for its exact dependency lock; its generated profile URLs override the legacy URL fields in DeviceConfig.h. DeviceConfig still supplies WiFi and public session metadata. No public owner signer is contacted by TLS setup.
+The environment variable works with all four SDK examples. FirmwareEmbed can set its roots directly or use the same offline profile. To use a generated profile with FirmwareEmbed or the MiningEmbed example, run the generate command below with include/AploTrustProfile.h as the output in the board or example project. The generated URLs and roots are passed to Web3 at startup.
 
 ## Trust and fallback boundaries
 

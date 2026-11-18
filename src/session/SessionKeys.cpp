@@ -1,5 +1,5 @@
 #include "SessionKeys.h"
-#include "internal/SessionEncoding.h"
+#include "SessionEncoding.h"
 #include "trezor/sha3.h"
 #include <algorithm>
 #include <cstring>

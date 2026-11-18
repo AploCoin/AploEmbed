@@ -834,7 +834,9 @@ bool Web3::setupCert(const RpcEndpoint& endpoint) {
 
 static bool parsePort(const string& text, unsigned short *port)
 {
-    if (port == nullptr || text.empty()) return false;
+    if (!port || text.empty() || text.find_first_not_of("0123456789") != string::npos) {
+        return false;
+    }
 
     char *end = nullptr;
     const unsigned long portValue = strtoul(text.c_str(), &end, 10);
@@ -846,7 +848,12 @@ static bool parsePort(const string& text, unsigned short *port)
     return true;
 }
 
-bool Web3::parseEndpoint(const char* url, RpcEndpoint* endpoint)
+bool Web3::isHttpsUrl(const char* url) {
+    RpcEndpoint endpoint;
+    return parseEndpoint(url, &endpoint, true);
+}
+
+bool Web3::parseEndpoint(const char* url, RpcEndpoint* endpoint, bool requireHttps)
 {
     if (endpoint == nullptr) return false;
     *endpoint = RpcEndpoint();
@@ -871,6 +878,8 @@ bool Web3::parseEndpoint(const char* url, RpcEndpoint* endpoint)
     } else if (node.rfind("http://", 0) == 0) {
         Serial.println("HTTP RPC endpoints are not supported; use HTTPS");
         return false;
+    } else if (requireHttps) {
+        return false;
     } else {
         endpoint->port = 443;
     }
@@ -888,6 +897,15 @@ bool Web3::parseEndpoint(const char* url, RpcEndpoint* endpoint)
         authority = authority.substr(0, colonPos);
     }
 
+    if (authority.empty() || authority.find_first_not_of(
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-.") != string::npos) {
+        return false;
+    }
+    for (unsigned char c : endpoint->path) {
+        if (c <= 32 || c == 127 || c == '#') {
+            return false;
+        }
+    }
     endpoint->host = authority;
     for (char& c : endpoint->host) {
         if (c >= 'A' && c <= 'Z') {

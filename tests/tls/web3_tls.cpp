@@ -19,6 +19,12 @@ static std::string read(const char* path) {
 }
 int main(int argc, char** argv) {
     assert(argc == 9);
+    assert(Web3::isHttpsUrl("HTTPS://rpc.test:443/API?request=one"));
+    for (const char* invalid : {"", "http://rpc.test", "rpc.test", "https://",
+                                "https://user@rpc.test", "https://rpc.test:65536",
+                                "https://rpc.test/path\r\nBad: header", "https://rpc.test/#fragment"}) {
+        assert(!Web3::isHttpsUrl(invalid));
+    }
     verificationTime = std::strtoll(argv[8], nullptr, 10);
     const std::string root = read(argv[3]), other = read(argv[4]);
     const std::string mode = argv[1];

@@ -72,6 +72,7 @@ public:
     void setCertificateBundle(const uint8_t* bundle_start, size_t bundle_size);
     // Compatibility name: select the explicit build profile, never discover CA.
     void setAutoCertificate();
+    static bool isHttpsUrl(const char* url);
     // Compatibility name retained; unauthenticated HTTPS is unavailable.
     void setInsecure();
 
@@ -159,7 +160,8 @@ private:
     std::string exec(const std::string* data, RpcEndpoint& endpoint);
     std::string execWithFailover(const std::string* data);  // RPC failover wrapper
     std::string generateJson(const std::string* method, const std::string* params);
-    bool parseEndpoint(const char* url, RpcEndpoint* endpoint);
+    static bool parseEndpoint(const char* url, RpcEndpoint* endpoint,
+                              bool requireHttps = false);
     bool setupCert(const RpcEndpoint& endpoint);
     void initWeb3(const char* primaryRpc, const char* fallbackRpc);
     

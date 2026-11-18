@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include "ReceiptFilter.h"
 #include "SessionKeys.h"
 #include <cassert>
@@ -22,7 +23,39 @@ void legacyTests();
 void rpcTests();
 int nativeIntegration();
 
+namespace {
+class SessionInput : public Stream {
+public:
+    explicit SessionInput(const std::string& text) : text_(text) {}
+    int read() override {
+        assert(position_ < text_.size());
+        return static_cast<unsigned char>(text_[position_++]);
+    }
+
+private:
+    std::string text_;
+    size_t position_ = 0;
+};
+
+void testSessionSerial() {
+    aplo::SessionKey key;
+    const std::string secret = std::string(63, '0') + "1";
+    const char* expected = "0x7E5F4552091A69125d5dFCb7b8C2659029395Bdf";
+    SessionInput correct(secret + "\r\n");
+    assert(key.ReadFromSerial(correct, expected));
+    SessionInput edited(std::string(63, '0') + "2\b1\n");
+    assert(key.ReadFromSerial(edited, expected));
+    for (const std::string& text : {secret + "0\n", secret.substr(1) + "\n",
+                                   std::string(63, '0') + "g\n", std::string(63, '0') + "2\n"}) {
+        SessionInput invalid(text);
+        assert(!key.ReadFromSerial(invalid, expected));
+        assert(key.Address().empty());
+    }
+}
+} // namespace
+
 int main(int argc, char** argv) {
+    testSessionSerial();
     if (argc == 2 && string(argv[1]) == "--integration") {
         return nativeIntegration();
     }

@@ -12,4 +12,4 @@ AploEmbed remains the base Arduino SDK: transport/TLS, Crypto, generic ABI inclu
 
 The migration intentionally requires a new mining authorization model. Import a restricted session key into firmware RAM, retain public owner/domain/budget/expiry, and keep owner registration/revocation signing on a separate device. There is no silent owner-signing fallback.
 
-Use the separate MiningEmbed checkout and the desired board directory in FirmwareEmbed. Each board project records the exact AploEmbed and MiningEmbed revisions in its dependency lock. Its README covers library setup, RPC trust, build and upload.
+Use the separate MiningEmbed checkout and the desired board directory in FirmwareEmbed. Each board project pins the AploEmbed and MiningEmbed GitHub revisions in platformio.ini. Its README covers library setup, RPC trust, build and upload.

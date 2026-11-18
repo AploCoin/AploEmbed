@@ -193,6 +193,7 @@ def generate(path, output):
     ]
     unique = {}
     for index, entry in enumerate(endpoints):
+        role = ("PRIMARY", "FALLBACK")[index]
         url = entry[0] if entry else ""
         lines.append(
             "#define APLO_TRUST_%s_URL %s"
@@ -205,8 +206,9 @@ def generate(path, output):
                 'static const char %s[] APLO_TRUST_FLASH = R"APLOCA(%s)APLOCA";'
                 % (symbol, entry[3].decode())
             )
+        lines.append("#define APLO_TRUST_%s_CA %s" % (role, unique[entry[3]] if entry else "nullptr"))
     lines.append(
-        "static const char* aploProfileCertificate(const char* host, unsigned short port) {"
+        "static inline const char* aploProfileCertificate(const char* host, unsigned short port) {"
     )
     for entry in endpoints:
         if entry:

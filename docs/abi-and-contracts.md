@@ -63,7 +63,7 @@ Keep new helpers on the same path: instantiate `Contract`, call `SetupContractDa
 
 Hardcoded selectors are easy to mistype and make future ABI changes harder to audit. A previous mining issue was fixed by adding proper fixed `bytesN` support to the generic encoder; generic callers use `SetupContractData("mine(bytes32)", ...)` instead of direct selector concatenation.
 
-Tests assert that AploCoin helper selectors are not hardcoded in `src/Web3.cpp`.
+Tests assert that AploCoin helper selectors are not hardcoded in `src/rpc/Web3.cpp`.
 
 ## Native sessions
 

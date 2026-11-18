@@ -14,9 +14,7 @@ pio run -d "examples/Aplo Session Keys" -e esp12e -e esp32dev -e esp32-c3-devkit
 ```
 
 The checked-in configurations pin ESP8266 platform 4.2.1 and ESP32 platform 6.12.0.
-For an external PlatformIO project, replace `/absolute/path/to/AploEmbed` below with
-this checkout's absolute path. Record `git rev-parse HEAD` alongside your firmware
-when reproducing a release; the split/session API is not assumed to be on remote master.
+For an external project, add the GitHub library under lib_deps. Pin a commit for a reproducible firmware build.
 
 ## Supported boards
 
@@ -24,7 +22,7 @@ when reproducing a release; the split/session API is not assumed to be on remote
 - ESP32-C3
 - ESP8266
 
-Each example is a standalone PlatformIO project with complete application and WiFi code in `src/main.cpp`. Its `platformio.ini` contains ESP32, ESP32-C3, and ESP8266 environments and pulls AploEmbed from GitHub.
+Each example is a standalone PlatformIO project with complete application and WiFi code in `src/main.cpp`. Its `platformio.ini` contains ESP32, ESP32-C3, and ESP8266 environments and builds against this checkout.
 
 For example, to build a balance query:
 
@@ -49,7 +47,7 @@ framework = arduino
 monitor_speed = 115200
 
 lib_deps =
-  symlink:///absolute/path/to/AploEmbed
+  https://github.com/AploCoin/AploEmbed.git
 ```
 
 For ESP32-C3 and ESP8266, copy the target-specific environment from:
@@ -94,9 +92,15 @@ void loop() {}
 
 For complete sketches, see [`examples/`](examples/).
 
+## Source layout
+
+- src/session/ contains key handling, the native registry API, RLP signing and the Web3 adapter. Include SessionKeys.h to access the session API.
+- src/rpc/ contains the Web3 transport and script client. src/internal/ contains their shared response parser.
+- src/abi/, src/crypto/ and src/encoding/ contain contract encoding, cryptography and conversion helpers. Existing public headers remain at the top of src/.
+
 ## RPC endpoints and HTTPS trust
 
-Configure URL and CA on the PC/CI before building. `Web3()` selects those explicit profile URLs and roots; it has no built-in CA. Start with the [three setup commands](docs/tls-trust.md): local public CA PEM, pinned compact public root set, or your own HTTPS RPC. The same profile works across the ordinary examples, MiningEmbed and FirmwareEmbed.
+Configure URL and CA on the PC/CI before building. `Web3()` selects those explicit profile URLs and roots; it has no built-in CA. Start with the [three setup commands](docs/tls-trust.md): local public CA PEM, pinned compact public root set, or your own HTTPS RPC. The firmware projects accept a public root directly or a header generated from the same profile.
 
 `Web3(primary, fallback)` and `setCertificate(pem)` remain available; the new `setCertificate(primaryPem, fallbackPem)` separates endpoint authorities. `Web3(customUrl)` has no implicit fallback. Missing trust and unsupported modes fail closed. Synchronize time before HTTPS. Public deployment and future Aplo CA are not assumed.
 
