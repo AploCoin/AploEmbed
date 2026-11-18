@@ -2,9 +2,21 @@
 
 AploEmbed is an Arduino library for using AploCoin from embedded devices.
 
-It provides RPC helpers, transaction signing, APLO/Gaplo conversion, staking helpers, and mining contract helpers for AploCoin chain ID `28282`.
+It provides RPC helpers, transaction signing, separate APLO and GAplo balances, staking and native delegated session keys. Legacy Contract helpers use AploCoin chain ID `28282`; the session API reads the effective chain ID from RPC.
 
-Mining rewards are accounted in Gaplo. Staking locks APLO in the staking contract and sets the reward multiplier used by mining rewards.
+Mining algorithms and submission policy live in the separate [MiningEmbed](https://github.com/AploCoin/MiningEmbed) library. Board applications live in [FirmwareEmbed](https://github.com/AploCoin/FirmwareEmbed). See [migration](docs/migration-0.1.md).
+
+Examples build the current checkout with `symlink://../..`; no GitHub branch is downloaded.
+From this repository root, run:
+
+```sh
+pio run -d "examples/Aplo Session Keys" -e esp12e -e esp32dev -e esp32-c3-devkitm-1
+```
+
+The checked-in configurations pin ESP8266 platform 4.2.1 and ESP32 platform 6.12.0.
+For an external PlatformIO project, replace `/absolute/path/to/AploEmbed` below with
+this checkout's absolute path. Record `git rev-parse HEAD` alongside your firmware
+when reproducing a release; the split/session API is not assumed to be on remote master.
 
 ## Supported boards
 
@@ -14,10 +26,10 @@ Mining rewards are accounted in Gaplo. Staking locks APLO in the staking contrac
 
 Each example is a standalone PlatformIO project with complete application and WiFi code in `src/main.cpp`. Its `platformio.ini` contains ESP32, ESP32-C3, and ESP8266 environments and pulls AploEmbed from GitHub.
 
-For example, to build mining:
+For example, to build a balance query:
 
 ```bash
-cd "examples/Aplo Mining"
+cd "examples/Aplo Balance Query"
 platformio run -e esp32dev  # or esp32-c3-devkitm-1 / esp12e
 platformio run --target upload
 platformio device monitor
@@ -37,7 +49,7 @@ framework = arduino
 monitor_speed = 115200
 
 lib_deps =
-  https://github.com/AploCoin/AploEmbed.git#master
+  symlink:///absolute/path/to/AploEmbed
 ```
 
 For ESP32-C3 and ESP8266, copy the target-specific environment from:
@@ -66,7 +78,8 @@ Web3 web3;
 void setup() {
   Serial.begin(115200);
 
-  // Connect WiFi in your sketch before making RPC calls.
+  // Connect WiFi and synchronize system time before RPC.
+  // Build with APLO_TRUST_PROFILE; see docs/tls-trust.md.
 
   std::string address = "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb";
   std::string balance = web3.AploGetAploBalanceString(&address);
@@ -81,26 +94,11 @@ void loop() {}
 
 For complete sketches, see [`examples/`](examples/).
 
-## RPC endpoints
+## RPC endpoints and HTTPS trust
 
-By default AploEmbed uses:
+Configure URL and CA on the PC/CI before building. `Web3()` selects those explicit profile URLs and roots; it has no built-in CA. Start with the [three setup commands](docs/tls-trust.md): local public CA PEM, pinned compact public root set, or your own HTTPS RPC. The same profile works across the ordinary examples, MiningEmbed and FirmwareEmbed.
 
-- primary: `pub1.aplocoin.com`
-- fallback: `pub2.aplocoin.com`
-
-You can override the endpoint:
-
-```cpp
-Web3 web3("custom-rpc.aplocoin.com");
-```
-
-Or provide a fallback:
-
-```cpp
-Web3 web3("primary-rpc.aplocoin.com", "fallback-rpc.aplocoin.com");
-```
-
-Do not hammer public RPC endpoints from development loops. Use your own RPC endpoint for heavier testing.
+`Web3(primary, fallback)` and `setCertificate(pem)` remain available; the new `setCertificate(primaryPem, fallbackPem)` separates endpoint authorities. `Web3(customUrl)` has no implicit fallback. Missing trust and unsupported modes fail closed. Synchronize time before HTTPS. Public deployment and future Aplo CA are not assumed.
 
 ## API overview
 
@@ -158,31 +156,17 @@ std::string AploStake(const std::string* stakingContract, const uint256_t* amoun
 std::string AploUnstake(const std::string* stakingContract, const char* privateKey, const std::string* fromAddress);
 ```
 
-### Mining
+### Native session keys
 
-Mining submits a `mine(bytes32)` contract transaction. A successful call earns a Gaplo reward. The staked APLO amount gates/scales the reward multiplier; the base reward comes from gas spent by the transaction.
-
-```cpp
-bool AploGetMinerParams(
-  const std::string* miningContract,
-  const std::string* minerAddress,
-  uint256_t* lastBlock,
-  uint256_t* currentDifficulty,
-  uint256_t* totalMined,
-  uint256_t* prevHash
-);
-
-std::string AploMine(const std::string* miningContract, const std::string* nonce, const char* privateKey, const std::string* fromAddress);
-```
-
-`AploMine()` uses the generic `Contract::SetupContractData("mine(bytes32)", ...)` ABI encoder. Fixed bytes types (`bytes1` through `bytes32`) are encoded as static ABI words.
+`#include <SessionKeys.h>` provides `aplo::SessionKeys`, a RAM-only `SessionKey`, exact-width `NativeTransaction`, owner registration/revocation payloads, proof of possession, checked RPC, and receipt states. It supports external owner digest signers without loading the owner's secret on the device. See [session keys](docs/session-keys.md) and [the compact example](examples/Aplo%20Session%20Keys/README.md).
 
 ## Units
 
-AploCoin uses APLO for value/staking and Gaplo as the gas token unit.
+APLO funds value/staking. GAplo independently funds transaction fees. Each asset uses 18 decimal places.
 
 ```text
-1 APLO = 10^18 Gaplo units for conversion helpers
+1 APLO = 10^18 APLO base units
+1 GAplo = 10^18 GAplo base units
 ```
 
 Helpers:

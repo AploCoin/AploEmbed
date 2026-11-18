@@ -22,58 +22,14 @@ Before sending a transaction:
 - start with a small amount
 - check nonce handling if sending multiple transactions in a row
 
-## RPC endpoints
+## RPC endpoints and TLS
 
-The default RPC endpoints are public AploCoin endpoints. They are useful for examples and light use, but production projects should run or configure their own RPC infrastructure.
+Configure HTTPS URLs and endpoint-specific root CAs using [build trust profiles](tls-trust.md). The SDK embeds no default root; an absent or unsupported trust mode fails closed. Public RPC deployment/issuer availability is not assumed. ESP validates chain, hostname and time at each connection. Keep owner signing separate from RPC access.
 
-Avoid tight polling loops against public endpoints.
+`Web3()` / `setAutoCertificate()` select the explicit build profile. `setCertificate()` still accepts immutable, lifetime-stable PEM. Bundle support is opt-in on ESP32; `setInsecure()` now reports an unavailable mode. The trust guide documents migration, fallback authority boundaries, IP SAN/MFLN limitations, reproducible offline inputs and root rotation.
 
-## TLS
+## Native session ownership
 
-AploEmbed automatically resolves a bundled root CA for HTTPS RPC endpoints by default. The bundled default is ISRG Root X1, which validates Let's Encrypt certificates including the public AploCoin RPC endpoints. You can still override TLS with a CA bundle, a specific PEM certificate, or explicit insecure mode.
+A delegated key is a restricted wallet, not a disposable password. Keep its owner signer on a separate device when possible. `SessionKey` defaults to RAM-only storage; enable WiFi before CSPRNG generation and never log/export secrets implicitly. Retain the exact chain domain and public policy. Revoke with the owner if a key is lost; used keys cannot be registered again. See [session keys](session-keys.md) for allowances, nonce ownership, expiry, explicit storage, external signers and uncertain-send reconciliation.
 
-Preferred options:
-
-1. Use the default auto resolver (`Web3()` or `web3.setAutoCertificate()`), which currently resolves to bundled ISRG Root X1 for Let's Encrypt endpoints.
-2. Use a PEM root certificate with `setCertificate(...)` when your custom RPC endpoint uses a different CA.
-3. Use a generated CA bundle on ESP32 PlatformIO builds when you need a broader trust store.
-4. Use `setInsecure()` only for temporary local testing.
-
-### ESP32 CA bundle
-
-```ini
-board_build.embed_files = data/cert/x509_crt_bundle.bin
-```
-
-```cpp
-extern const uint8_t rootca_crt_bundle_start[] asm("_binary_data_cert_x509_crt_bundle_bin_start");
-extern const uint8_t rootca_crt_bundle_end[] asm("_binary_data_cert_x509_crt_bundle_bin_end");
-
-Web3 web3;
-web3.setCertificateBundle(
-  rootca_crt_bundle_start,
-  rootca_crt_bundle_end - rootca_crt_bundle_start
-);
-```
-
-### Auto root CA resolution
-
-```cpp
-Web3 web3; // auto root CA resolution is enabled by default
-
-// Optional explicit form:
-web3.setAutoCertificate();
-```
-
-The auto resolver uses the bundled `APLO_ISRG_ROOT_X1_CA` trust anchor. This works for custom HTTPS RPC domains that use Let's Encrypt. For custom endpoints using another CA, pass that CA explicitly.
-
-### PEM root certificate
-
-```cpp
-const char* custom_root_ca = "-----BEGIN CERTIFICATE-----\n...";
-
-Web3 web3("custom-rpc.example.com");
-web3.setCertificate(custom_root_ca);
-```
-
-ESP8266 uses BearSSL trust anchors internally. ESP32 CA bundles are not available on ESP8266.
+Legacy `Crypto::Sign` has a pre-existing inverted boolean success indication relative to its Trezor call. This release leaves that legacy behavior unchanged; do not use that boolean as a receipt or signature-verification result. The new SessionKey signer checks Trezor's actual return code and verifies recovered signer before a transaction is returned.

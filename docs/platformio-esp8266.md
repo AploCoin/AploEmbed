@@ -8,13 +8,13 @@ Copy this environment into an example `platformio.ini` when targeting ESP8266:
 
 ```ini
 [env:esp12e]
-platform = espressif8266
+platform = espressif8266@4.2.1
 board = esp12e
 framework = arduino
 monitor_speed = 115200
 
 lib_deps =
-    https://github.com/AploCoin/AploEmbed.git#master
+    symlink:///absolute/path/to/AploEmbed
 
 build_flags =
     -DCORE_DEBUG_LEVEL=3
@@ -35,9 +35,9 @@ ESP8266 uses BearSSL. ESP32 CA bundle APIs are not available on ESP8266.
 
 Supported AploEmbed modes:
 
-- default automatic bundled root CA resolution for public AploCoin HTTPS RPC endpoints;
+- an explicit compact [build trust profile](tls-trust.md);
 - `setCertificate(...)` with a PEM trust anchor;
-- `setInsecure()` only for temporary local testing.
+- no insecure mode: `setInsecure()` reports unavailable.
 
 Do not use `setCertificateBundle(...)` expecting ESP32 behavior on ESP8266.
 
@@ -45,9 +45,9 @@ Do not use `setCertificateBundle(...)` expecting ESP32 behavior on ESP8266.
 
 ESP8266 has limited RAM. To keep sketches reliable:
 
-- AploEmbed creates and reuses one ESP8266 BearSSL transport before `setup()`, so the core's shared TLS stack allocation happens before WiFi and application allocations can fragment the heap.
+- AploEmbed creates and reuses one ESP8266 BearSSL transport when Web3 is first constructed. Examples may defer Web3 until after WiFi; account for the shared TLS secondary stack in application heap planning.
 - RPC responses are bounded and their storage is reserved before TLS activity; oversized responses fail cleanly instead of growing the heap during a handshake.
-- The mining example uses fixed byte arrays and the hardware CSPRNG in its nonce/hash loop. It does not allocate Arduino `String`, `std::string`, or vectors per hash attempt.
+- MiningEmbed owns the fixed-buffer nonce/hash loop; the full board runtime moved to FirmwareEmbed. Base examples cover balances, transactions, staking and sessions.
 - keep transaction signing paths short and avoid unnecessary copies;
 - prefer one RPC operation at a time.
 
@@ -61,7 +61,7 @@ Use a local dependency while validating unpublished changes:
 
 ```ini
 lib_deps =
-    file:///absolute/path/to/AploEmbed
+    symlink:///absolute/path/to/AploEmbed
 ```
 
 If PlatformIO uses an older cached dependency:

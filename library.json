@@ -1,7 +1,7 @@
 {
   "name": "AploEmbed",
-  "version": "0.0.1",
-  "description": "AploCoin blockchain interface for embedded Arduino devices.",
+  "version": "0.1.0",
+  "description": "Arduino SDK for Aplo native balances, transactions, staking and delegated session keys.",
   "keywords": [
     "AploCoin",
     "AploEmbed",
@@ -12,7 +12,7 @@
     "Arduino",
     "RPC",
     "Staking",
-    "Mining"
+    "Session Keys"
   ],
   "repository": {
     "type": "git",
@@ -43,7 +43,8 @@
       "library.json",
       "library.properties",
       "keywords.txt",
-      "LICENSE"
+      "LICENSE",
+      "tools"
     ],
     "exclude": [
       "examples/**/.pio",

@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "kind": "public",
+  "primary": {
+    "url": "https://rpc.example.invalid",
+    "publicSet": "public-2026-11-v1"
+  }
+}

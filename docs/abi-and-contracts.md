@@ -55,14 +55,16 @@ The high-level AploCoin helpers in `Web3` use the generic encoder internally:
 web3.AploGetAploBalance(&address);          // balanceOf(address)
 web3.AploGetStake(&staking, &address);      // getStake(address)
 web3.AploGetStakeMultiplier(&staking, &address);
-web3.AploGetMinerParams(&mining, &address, &lastBlock, &difficulty, &totalMined, &prevHash);
-web3.AploMine(&mining, &nonce, privateKey, &address);
 ```
 
 Keep new helpers on the same path: instantiate `Contract`, call `SetupContractData(...)`, then call `ViewCall(...)` or `SendTransaction(...)`.
 
 ## Why selectors are not hardcoded
 
-Hardcoded selectors are easy to mistype and make future ABI changes harder to audit. A previous mining issue was fixed by adding proper fixed `bytesN` support to the generic encoder; the final `AploMine()` path intentionally uses `SetupContractData("mine(bytes32)", ...)` instead of direct selector concatenation.
+Hardcoded selectors are easy to mistype and make future ABI changes harder to audit. A previous mining issue was fixed by adding proper fixed `bytesN` support to the generic encoder; generic callers use `SetupContractData("mine(bytes32)", ...)` instead of direct selector concatenation.
 
 Tests assert that AploCoin helper selectors are not hardcoded in `src/Web3.cpp`.
+
+## Native sessions
+
+Use the typed `SessionKeys` codec for the canonical `bytes4[]` plus `bytes` registry ABI. The older variadic Contract encoder does not support `bytes4[]`. SessionKeys derives selectors from signatures and streams proof words into existing Trezor Keccak. See [session keys](session-keys.md). Mining wrappers moved to MiningEmbed; fixed bytes32 support remains in this SDK.

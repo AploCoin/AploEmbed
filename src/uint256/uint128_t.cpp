@@ -30,26 +30,27 @@ uint128_t::uint128_t(const char *s) {
 }
 
 void uint128_t::init(const char *s) {
-    if (s == NULL || s[0] == 0) { uint128_t(); return; }
-    if (s[1] == 'x')
-        s += 2;
-    else if (*s == 'x')
-        s++;
-
-    UPPER = ConvertToUint64(s);
-    LOWER = ConvertToUint64(s + 16);
+    UPPER = LOWER = 0;
+    if (s == nullptr || *s == '\0') return;
+    if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) s += 2;
+    else if (*s == 'x') ++s;
+    const size_t length = strlen(s);
+    if (length > 32) return;
+    char padded[32]; memset(padded, '0', sizeof(padded));
+    for (size_t i = 0; i < length; ++i) if (HexToInt(s + i) == 0xff) return;
+    memcpy(padded + 32 - length, s, length);
+    UPPER = ConvertToUint64(padded);
+    LOWER = ConvertToUint64(padded + 16);
 }
 
 uint64_t uint128_t::ConvertToUint64(const char *s) const {
-    int count = 0;
-    uint64_t val = 0;
-    uint8_t hv = HexToInt(s++);
-    while (hv != 0xFF && count < 16) {
-        val = (val << 4) | hv;
-        hv = HexToInt(&s[count]);
-        count++;
+    uint64_t value = 0;
+    for (size_t i = 0; i < 16; ++i) {
+        const uint8_t digit = HexToInt(s + i);
+        if (digit == 0xff) break;
+        value = (value << 4) | digit;
     }
-    return val;
+    return value;
 }
 
 uint8_t uint128_t::HexToInt(const char *s) const {

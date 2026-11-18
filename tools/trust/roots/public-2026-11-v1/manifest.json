@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "version": "public-2026-11-v1",
+  "purpose": "Compact opt-in candidate public RPC trust; no deployed Aplo domain/CA assertion",
+  "roots": [
+    {
+      "file": "isrg-root-x1.pem",
+      "source": "https://letsencrypt.org/certs/isrgrootx1.pem",
+      "pemSha256": "22b557a27055b33606b6559f37703928d3e4ad79f110b407d04986e1843543d1",
+      "derSha256": "96bcec06264976f37460779acf28c5a7cfe8a3c0aae11a8ffcee05c0bddf08c6",
+      "provenance": "Official HTTPS download reproduced byte-for-byte on 2026-11-18; inherited runtime PEM removed from SDK"
+    }
+  ]
+}

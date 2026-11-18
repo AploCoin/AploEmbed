@@ -8,7 +8,7 @@ Copy this environment into an example `platformio.ini` when targeting ESP32-C3:
 
 ```ini
 [env:esp32-c3-devkitm-1]
-platform = espressif32
+platform = espressif32@6.12.0
 board = esp32-c3-devkitm-1
 framework = arduino
 monitor_speed = 115200
@@ -16,7 +16,7 @@ monitor_rts = 0
 monitor_dtr = 0
 
 lib_deps =
-    https://github.com/AploCoin/AploEmbed.git#master
+    symlink:///absolute/path/to/AploEmbed
 
 build_flags =
     -DCORE_DEBUG_LEVEL=3
@@ -77,7 +77,7 @@ ESP32-C3 has less RAM than many ESP32 boards. For mining examples:
 - let RPC failures return to the mining loop and retry;
 - verify transaction ABI encoding with a local-library build before flashing.
 
-A previous ESP32-C3 mining crash occurred because fixed `bytes32` values were incorrectly ABI-encoded as dynamic `bytes`. AploEmbed's generic ABI encoder now supports fixed bytes types (`bytes1` through `bytes32`), so `AploMine()` should use `SetupContractData("mine(bytes32)", ...)` rather than manually concatenated calldata.
+A previous ESP32-C3 mining crash occurred because fixed `bytes32` values were incorrectly ABI-encoded as dynamic `bytes`. AploEmbed's generic ABI encoder now supports fixed bytes types (`bytes1` through `bytes32`), so generic callers should use `SetupContractData("mine(bytes32)", ...)` rather than manually concatenated calldata.
 
 ## Local library testing
 
@@ -88,11 +88,11 @@ Use a temporary PlatformIO fixture when validating unpublished source changes:
 src_dir = src
 
 [env:esp32-c3-devkitm-1]
-platform = espressif32
+platform = espressif32@6.12.0
 board = esp32-c3-devkitm-1
 framework = arduino
 monitor_speed = 115200
 monitor_rts = 0
 monitor_dtr = 0
-lib_deps = file:///absolute/path/to/AploEmbed
+lib_deps = symlink:///absolute/path/to/AploEmbed
 ```

@@ -135,17 +135,21 @@ Contract::Contract(Web3* _web3, const char* address) {
     ownsWeb3 = false;
 }
 
+#if APLO_ENABLE_HTTPS
 Contract::Contract(long long networkId) : Contract(new Web3(networkId), "") {
     ownsWeb3 = true;
 }
+#endif
 
 Contract::~Contract() {
     delete crypto;
     crypto = nullptr;
+#if APLO_ENABLE_HTTPS
     if (ownsWeb3) {
         delete web3;
         web3 = nullptr;
     }
+#endif
 }
 
 void Contract::SetPrivateKey(const char *key) {

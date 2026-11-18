@@ -68,7 +68,7 @@ pio device monitor
 ### Using Arduino IDE
 
 1. Copy the contents of `main.cpp` to a new sketch
-2. Install the AploEmbed library (version 0.0.1+)
+2. Install the AploEmbed library (version 0.1.0+)
 3. Select your ESP32 board
 4. Set serial monitor to 115200 baud
 5. Upload and monitor
@@ -139,7 +139,7 @@ uint256_t gaplo = Util::ConvertDecimalToWei("1234.56", 18);
 - Ensure the address has been funded on AploCoin network
 
 ### Compilation Errors
-- Ensure AploEmbed library version 0.0.1+ is installed
+- Ensure AploEmbed library version 0.1.0+ is installed
 - Check that all required headers are available
 - Verify ESP32 board support is installed
 
@@ -147,7 +147,7 @@ uint256_t gaplo = Util::ConvertDecimalToWei("1234.56", 18);
 
 - **Aplo Send Transaction**: Send APLO to another address
 - **Aplo Staking**: Stake and unstake APLO tokens
-- **Aplo Mining**: Query mining parameters and submit solutions
+- **MiningEmbed / AploMiningFirmware**: separate mining library and board application; see the migration guide
 
 ## License
 

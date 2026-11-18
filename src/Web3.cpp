@@ -7,13 +7,21 @@
 
 #include "Web3.h"
 
+#if APLO_ENABLE_HTTPS
+
 #include "Contract.h"
 #include "Util.h"
 #include "TagReader/TagReader.h"
+#include "internal/RpcResponseBuffer.h"
 #include <cctype>
 #include <cstdlib>
 #include <cstdio>
 #include <ctime>
+#include <new>
+
+#ifdef APLO_TRUST_PROFILE_HEADER
+#include APLO_TRUST_PROFILE_HEADER
+#endif
 #include "nodes.h"
 
 // Helper function to initialize Web3 instance
@@ -83,12 +91,12 @@ void Web3::initWeb3(const char* primaryRpc, const char* fallbackRpc) {
     host = nullptr;
     chainId = APLO_ID;  // Fixed to AploCoin chain ID (28282)
 
-    // Default: validate known public RPC hosts with the bundled root CA.
-    certMode = CERT_AUTO_RESOLVE;
+    certMode = CERT_PROFILE;
     caCert = nullptr;
     certBundle = nullptr;
     certBundleSize = 0;
-    resolvedAutoCert = nullptr;
+    fallbackCaCert = nullptr;
+    lastTlsError = TlsError::None;
 #if defined(ESP8266)
     esp8266TrustAnchor = nullptr;
     esp8266TrustAnchorCert = nullptr;
@@ -100,12 +108,16 @@ void Web3::initWeb3(const char* primaryRpc, const char* fallbackRpc) {
 
 // Default constructor: uses default Aplo RPC endpoints
 Web3::Web3() {
+#ifdef APLO_TRUST_PROFILE_HEADER
+    initWeb3(APLO_TRUST_PRIMARY_URL, APLO_TRUST_FALLBACK_URL);
+#else
     initWeb3(getAploPrimaryNode(), getAploFallbackNode());
+#endif
 }
 
 // Custom RPC constructor
 Web3::Web3(const char* primaryRpcUrl) {
-    initWeb3(primaryRpcUrl, getAploFallbackNode());
+    initWeb3(primaryRpcUrl, nullptr);
 }
 
 // Custom RPC with fallback
@@ -122,11 +134,17 @@ Web3::Web3(long long networkId) {
         Serial.print("), ignoring provided chainId ");
         Serial.println(networkId);
     }
+#ifdef APLO_TRUST_PROFILE_HEADER
+    initWeb3(APLO_TRUST_PRIMARY_URL, APLO_TRUST_FALLBACK_URL);
+#else
     initWeb3(getAploPrimaryNode(), getAploFallbackNode());
+#endif
 }
 
 Web3::~Web3() {
 #if defined(ESP8266)
+    getEsp8266Client().stop();
+    getEsp8266Client().setTrustAnchors(nullptr);
     delete esp8266TrustAnchor;
     esp8266TrustAnchor = nullptr;
     esp8266TrustAnchorCert = nullptr;
@@ -146,16 +164,26 @@ void Web3::setCertificateBundle(const uint8_t* bundle_start, size_t bundle_size)
 }
 
 void Web3::setCertificate(const char* root_ca) {
+    setCertificate(root_ca, root_ca);
+}
+
+void Web3::setCertificate(const char* primary_ca, const char* fallback_ca) {
     certMode = CERT_CA;
-    caCert = root_ca;
+    caCert = primary_ca;
+    fallbackCaCert = fallback_ca;
 }
 
 void Web3::setAutoCertificate() {
-    certMode = CERT_AUTO_RESOLVE;
+    certMode = CERT_PROFILE;
 }
 
 void Web3::setInsecure() {
-    certMode = CERT_INSECURE;
+    certMode = CERT_UNAVAILABLE;
+}
+
+string Web3::RpcRequest(const string& method, const string& params) {
+    string input = generateJson(&method, &params);
+    return execWithFailover(&input);
 }
 
 string Web3::Web3ClientVersion() {
@@ -450,9 +478,7 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
     }
 
 #if defined(ESP8266)
-    if (!esp8266DeadlineReached(endpoint.retryAfterMs)) return "";
-    if (certMode != CERT_INSECURE && !ensureEsp8266X509Time()) {
-        endpoint.retryAfterMs = millis() + APLO_RPC_FAILURE_COOLDOWN_MS;
+    if (!esp8266DeadlineReached(endpoint.retryAfterMs)) {
         return "";
     }
 #endif
@@ -460,23 +486,18 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
     host = endpoint.host.c_str();
 
 #if defined(ESP8266)
-    string result;
-    result.reserve(APLO_ESP8266_RPC_RESPONSE_MAX);
     // Receipt payloads include logs and can exceed the general response buffer.
     // Track only the status token while streaming so confirmation never needs
     // the complete multi-kilobyte receipt in heap.
-    bool receiptStatusRequest = data->find("\"method\":\"eth_getTransactionReceipt\"") != string::npos;
-    const char *receiptSuccessToken = "\"status\":\"0x1\"";
-    const char *receiptRevertToken = "\"status\":\"0x0\"";
-    size_t receiptSuccessMatch = 0;
-    size_t receiptRevertMatch = 0;
-    bool receiptSuccess = false;
-    bool receiptReverted = false;
+    const bool receiptStatusRequest =
+        data->find("\"method\":\"eth_getTransactionReceipt\"") != string::npos;
+    aplo::detail::RpcResponseBuffer response(APLO_ESP8266_RPC_RESPONSE_MAX, receiptStatusRequest);
     // The standalone probe omits SNI. SNI-routed RPC endpoints can reject it
     // even when the normal BearSSL handshake supports MFLN. Request 1024 and
     // validate the negotiated result after the real hostname-aware connection.
-    if (endpoint.tlsBufferSize == 0) endpoint.tlsBufferSize = 1024;
-    bool responseOverflow = false;
+    if (endpoint.tlsBufferSize == 0) {
+        endpoint.tlsBufferSize = 1024;
+    }
 #else
     string result;
 #endif
@@ -489,13 +510,34 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
     WiFiClientSecure scopedClient;
     client = &scopedClient;
 #endif
-    setupCert();
+    client->stop();
+    if (!setupCert(endpoint)) {
+        client = nullptr;
+        return "";
+    }
+#if defined(ESP8266)
+    if (!ensureEsp8266X509Time()) {
+        lastTlsError = TlsError::InvalidTime;
+        endpoint.retryAfterMs = millis() + APLO_RPC_FAILURE_COOLDOWN_MS;
+        client = nullptr;
+        return "";
+    }
+#else
+    // The application owns clock synchronization on ESP32; never skip X509 time.
+    if (time(nullptr) < 1609459200L) {
+        lastTlsError = TlsError::InvalidTime;
+        Serial.println(F("TLS paused: valid system time unavailable"));
+        client = nullptr;
+        return "";
+    }
+#endif
 #if defined(ESP8266)
     const time_t now = time(nullptr);
     client->setX509Time(now);
 #endif
 
     if (!client->connect(host, endpoint.port)) {
+        lastTlsError = TlsError::ConnectionFailed;
         Serial.print("Unable to connect to Host: ");
         Serial.println(host);
 #if defined(ESP8266)
@@ -514,6 +556,7 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
     }
 #if defined(ESP8266)
     if (!client->getMFLNStatus()) {
+        lastTlsError = TlsError::FragmentLength;
         Serial.print("RPC host did not negotiate ESP8266 TLS MFLN: ");
         Serial.println(host);
         endpoint.retryAfterMs = millis() + APLO_RPC_FAILURE_COOLDOWN_MS;
@@ -543,13 +586,17 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
     uint32_t headerState = 0;
     unsigned headerBytes = 0;
     unsigned long headerDeadline = millis() + 10000;
-    while ((client->connected() || client->available()) &&
-           headerBytes < 2048 && millis() < headerDeadline) {
-        if (!client->available()) {
+    while ((client->connected() || client->available() > 0) && headerBytes < 2048 &&
+           millis() < headerDeadline) {
+        if (client->available() <= 0) {
             delay(1);
             continue;
         }
-        const char current = static_cast<char>(client->read());
+        const int next = client->read();
+        if (next < 0) {
+            continue;
+        }
+        const char current = static_cast<char>(next);
         ++headerBytes;
         headerState = ((headerState << 8) | static_cast<uint8_t>(current)) & 0xffffffffUL;
         if (headerState == 0x0d0a0d0aUL) {
@@ -569,27 +616,15 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
     }
 
     unsigned long deadline = millis() + 10000;
-    while (client->connected() || client->available()) {
-        while (client->available()) {
-            const char c = static_cast<char>(client->read());
+    while (client->connected() || client->available() > 0) {
+        while (client->available() > 0) {
+            const int next = client->read();
+            if (next < 0) {
+                break;
+            }
+            const char c = static_cast<char>(next);
 #if defined(ESP8266)
-            if (receiptStatusRequest) {
-                if (!receiptSuccess && c == receiptSuccessToken[receiptSuccessMatch]) {
-                    if (receiptSuccessToken[++receiptSuccessMatch] == '\0') receiptSuccess = true;
-                } else if (!receiptSuccess) {
-                    receiptSuccessMatch = (c == receiptSuccessToken[0]) ? 1 : 0;
-                }
-                if (!receiptReverted && c == receiptRevertToken[receiptRevertMatch]) {
-                    if (receiptRevertToken[++receiptRevertMatch] == '\0') receiptReverted = true;
-                } else if (!receiptReverted) {
-                    receiptRevertMatch = (c == receiptRevertToken[0]) ? 1 : 0;
-                }
-            }
-            if (result.size() < APLO_ESP8266_RPC_RESPONSE_MAX) {
-                result += c;
-            } else {
-                responseOverflow = true;
-            }
+            response.Push(c);
 #else
             result += c;
 #endif
@@ -604,21 +639,15 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
     client = nullptr;
 
 #if defined(ESP8266)
-    if (responseOverflow) {
-        if (receiptStatusRequest && receiptSuccess) {
-            endpoint.retryAfterMs = 0;
-            return "{\"result\":{\"status\":\"0x1\"}}";
-        }
-        if (receiptStatusRequest && receiptReverted) {
-            endpoint.retryAfterMs = 0;
-            return "{\"result\":{\"status\":\"0x0\"}}";
-        }
+    if (response.Overflow() && !receiptStatusRequest) {
         Serial.println("HTTP response exceeds ESP8266 buffer");
         return "";
     }
     endpoint.retryAfterMs = 0;
-#endif
+    return response.Finish();
+#else
     return result;
+#endif
 }
 
 static bool normalizeRpcHex(string *value)
@@ -734,120 +763,73 @@ string Web3::getString(const string *json)
     return text;
 }
 
-/**
- * Configure TLS certificate validation for HTTPS connections.
- * 
- * Four modes are supported:
- * 0. CERT_AUTO_RESOLVE: Use the bundled root CA selected for the target host.
- *    - Defaults to ISRG Root X1, which validates Let's Encrypt endpoints.
- *    - This is the default for HTTPS RPC endpoints.
- *
- * 1. CERT_AUTO: Do not override WiFiClientSecure certificate handling.
- *    - Uses the TLS behavior configured by the active Arduino/ESP32 core.
- *
- * 2. CERT_BUNDLE: Use ESP32 CA certificate bundle (recommended for production)
- *    - Validates against Mozilla's root certificate set
- *    - Requires board_build.embed_files in platformio.ini
- *    - See: https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/protocols/esp_crt_bundle.html
- * 
- * 3. CERT_CA: Use specific CA certificate (PEM format)
- *    - Validates against a single root CA certificate
- *    - Useful for pinning to a specific CA you control
- * 
- * 4. CERT_INSECURE: Explicitly disable certificate validation
- *    - Connection is encrypted but server identity is NOT verified
- *    - Vulnerable to man-in-the-middle attacks
- *    - Use only for testing or when certificate validation is not feasible
- * 
- * Call setCertificateBundle() or setCertificate() BEFORE making RPC calls if your platform
- * does not provide a usable default trust store.
- */
-void Web3::setupCert()
-{
-    switch (certMode) {
-        case CERT_BUNDLE:
-            // ESP32 supports certificate bundles. ESP8266 BearSSL does not,
-            // so keep its default TLS behavior and warn instead of calling an
-            // ESP32-only API.
-            if (certBundle != nullptr) {
-#if defined(ESP8266)
-                Serial.println("Warning: ESP8266 does not support setCACertBundle(); using WiFiClientSecure defaults");
-                (void)certBundle;
-                (void)certBundleSize;
-#elif defined(ESP32)
-  #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
-                if (certBundleSize > 0) {
-                    client->setCACertBundle(certBundle, certBundleSize);
-                } else {
-                    Serial.println("Warning: ESP32 Arduino core 3.x requires CA bundle size; using WiFiClientSecure defaults");
-                }
-  #else
-                (void)certBundleSize;
-                client->setCACertBundle(certBundle);
-  #endif
-#else
-                (void)certBundle;
-                (void)certBundleSize;
-                Serial.println("Warning: CA bundle mode is not supported on this platform; using WiFiClientSecure defaults");
-#endif
+// Select trust before connecting. Never use a server response to choose anchors.
+// The ESP8266 singleton is synchronous: stop it before replacing its one X509List.
+bool Web3::setupCert(const RpcEndpoint& endpoint) {
+    lastTlsError = TlsError::None;
+    if (certMode == CERT_BUNDLE) {
+#if defined(ESP32) && APLO_TLS_ENABLE_BUNDLE
+        if (certBundle == nullptr) {
+            lastTlsError = TlsError::MissingTrust;
+        } else {
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+            if (certBundleSize == 0) {
+                lastTlsError = TlsError::InvalidTrust;
             } else {
-                Serial.println("Warning: CERT_BUNDLE mode but bundle is null; using WiFiClientSecure defaults");
+                client->setCACertBundle(certBundle, certBundleSize);
+                return true;
             }
-            break;
-            
-        case CERT_CA:
-            // Use specific CA certificate. ESP32 accepts PEM directly;
-            // ESP8266 BearSSL needs an X509List trust anchor that must stay
-            // alive for the TLS connection duration.
-            if (caCert != nullptr) {
+#else
+            client->setCACertBundle(certBundle);
+            return true;
+#endif
+        }
+#else
+        lastTlsError = TlsError::UnsupportedTrust;
+#endif
+    } else if (certMode == CERT_UNAVAILABLE) {
+        lastTlsError = TlsError::UnsupportedTrust;
+    } else {
+        const char* pem = nullptr;
+        if (certMode == CERT_CA) {
+            pem = &endpoint == &primaryEndpoint ? caCert : fallbackCaCert;
+        } else {
+#ifdef APLO_TRUST_PROFILE_HEADER
+            pem = aploProfileCertificate(endpoint.host.c_str(), endpoint.port);
+#endif
+        }
+        if (pem == nullptr) {
+            lastTlsError = TlsError::MissingTrust;
+        } else {
 #if defined(ESP8266)
-                if (esp8266TrustAnchor == nullptr || esp8266TrustAnchorCert != caCert) {
-                    delete esp8266TrustAnchor;
-                    esp8266TrustAnchor = new BearSSL::X509List(caCert);
-                    esp8266TrustAnchorCert = caCert;
-                }
+            if (esp8266TrustAnchor == nullptr || esp8266TrustAnchorCert != pem) {
+                client->setTrustAnchors(nullptr);
+                delete esp8266TrustAnchor;
+                esp8266TrustAnchor = new (std::nothrow) BearSSL::X509List(pem);
+                esp8266TrustAnchorCert = pem;
+            }
+            if (esp8266TrustAnchor == nullptr || esp8266TrustAnchor->getCount() == 0) {
+                lastTlsError = TlsError::InvalidTrust;
+            } else {
                 client->setTrustAnchors(esp8266TrustAnchor);
-#elif defined(ESP32)
-                client->setCACert(caCert);
-#else
-                client->setCACert(caCert);
-#endif
-            } else {
-                Serial.println("Warning: CERT_CA mode but certificate is null; using WiFiClientSecure defaults");
+                return true;
             }
-            break;
-
-        case CERT_AUTO_RESOLVE:
-            resolvedAutoCert = getAploRootCAForHost(host);
-            if (resolvedAutoCert != nullptr) {
-#if defined(ESP8266)
-                if (esp8266TrustAnchor == nullptr || esp8266TrustAnchorCert != resolvedAutoCert) {
-                    delete esp8266TrustAnchor;
-                    esp8266TrustAnchor = new BearSSL::X509List(resolvedAutoCert);
-                    esp8266TrustAnchorCert = resolvedAutoCert;
-                }
-                client->setTrustAnchors(esp8266TrustAnchor);
-#elif defined(ESP32)
-                client->setCACert(resolvedAutoCert);
 #else
-                client->setCACert(resolvedAutoCert);
-#endif
+            if (*pem == '\0') {
+                lastTlsError = TlsError::MissingTrust;
             } else {
-                Serial.println("Warning: no bundled CA for RPC host; using WiFiClientSecure defaults");
+                client->setCACert(pem);
+                return true;
             }
-            break;
-
-        case CERT_AUTO:
-            // Do not call setInsecure() and do not hardcode certificate material.
-            // The active WiFiClientSecure implementation handles TLS with its configured trust store.
-            break;
-            
-        case CERT_INSECURE:
-        default:
-            // Explicit testing/development mode only.
-            client->setInsecure();
-            break;
+#endif
+        }
     }
+    Serial.print(F("TLS trust unavailable for "));
+    Serial.print(endpoint.host.c_str());
+    Serial.print(F(" (profile missing, invalid or unsupported; code "));
+    Serial.print(static_cast<unsigned>(lastTlsError));
+    Serial.println(F(")"));
+    return false;
 }
 
 static bool parsePort(const string& text, unsigned short *port)
@@ -874,6 +856,15 @@ bool Web3::parseEndpoint(const char* url, RpcEndpoint* endpoint)
         return false;
     }
 
+    // URI schemes and DNS hostnames are ASCII case insensitive. Paths are not.
+    const size_t schemeEnd = node.find("://");
+    if (schemeEnd != string::npos && schemeEnd <= 5) {
+        for (size_t i = 0; i < schemeEnd; ++i) {
+            if (node[i] >= 'A' && node[i] <= 'Z') {
+                node[i] += 'a' - 'A';
+            }
+        }
+    }
     if (node.rfind("https://", 0) == 0) {
         node = node.substr(8);
         endpoint->port = 443;
@@ -898,6 +889,11 @@ bool Web3::parseEndpoint(const char* url, RpcEndpoint* endpoint)
     }
 
     endpoint->host = authority;
+    for (char& c : endpoint->host) {
+        if (c >= 'A' && c <= 'Z') {
+            c += 'a' - 'A';
+        }
+    }
     endpoint->valid = !endpoint->host.empty();
     return endpoint->valid;
 }
@@ -914,7 +910,7 @@ long long Web3::getChainId() const {
 string Web3::execWithFailover(const string* data) {
     string result = exec(data, primaryEndpoint);
 
-    if (!result.empty() && result.find("\"result\"") != string::npos) {
+    if (!result.empty()) {
         return result;
     }
 
@@ -922,7 +918,7 @@ string Web3::execWithFailover(const string* data) {
         Serial.println("Primary RPC failed, trying fallback...");
         result = exec(data, fallbackEndpoint);
 
-        if (!result.empty() && result.find("\"result\"") != string::npos) {
+        if (!result.empty()) {
             Serial.println("Fallback RPC succeeded");
             return result;
         }
@@ -1053,81 +1049,4 @@ uint256_t Web3::AploGetStakeMultiplier(const string* stakingContract, const stri
     return getUint256(&result);
 }
 
-// -------------------------------
-// AploCoin Mining Helpers
-// -------------------------------
-
-bool Web3::AploGetMinerParams(const string* miningContract, const string* minerAddress,
-                              uint256_t* lastBlock, uint256_t* currentDifficulty,
-                              uint256_t* totalMined, uint256_t* prevHash) {
-    // Call miner_params(address) view function.
-    // Returns: (uint256 last_block, uint256 current_difficulty, uint256 total_mined, uint256 prev_hash)
-    Contract contract(this, miningContract->c_str());
-    string functionData = contract.SetupContractData("miner_params(address)", minerAddress);
-    string result = contract.ViewCall(&functionData);
-    
-    if (result.length() == 0) {
-        return false;
-    }
-    
-    // Parse result - should contain 4 uint256 values (128 hex chars each = 64 bytes)
-    string resultData = getResult(&result);
-    if (resultData.length() < 256) {  // 4 * 64 hex chars
-        return false;
-    }
-    
-    // Extract each uint256 (64 hex chars each)
-    *lastBlock = uint256_t(("0x" + resultData.substr(0, 64)).c_str());
-    *currentDifficulty = uint256_t(("0x" + resultData.substr(64, 64)).c_str());
-    *totalMined = uint256_t(("0x" + resultData.substr(128, 64)).c_str());
-    *prevHash = uint256_t(("0x" + resultData.substr(192, 64)).c_str());
-    
-    return true;
-}
-
-string Web3::AploMine(const string* miningContract, const string* nonce, const char* privateKey, const string* fromAddress) {
-    // Validate nonce format (must be 32-byte hex string)
-    string nonceStr = *nonce;
-    // Remove 0x prefix if present
-    if (nonceStr.length() >= 2 && nonceStr.substr(0, 2) == "0x") {
-        nonceStr = nonceStr.substr(2);
-    }
-    
-    // Check length (must be 64 hex chars = 32 bytes)
-    if (nonceStr.length() != 64) {
-        Serial.println("AploMine: nonce must be 32 bytes (64 hex chars)");
-        return "";
-    }
-    
-    // Create contract instance
-    Contract contract(this, miningContract->c_str());
-    contract.SetPrivateKey(privateKey);
-    
-    // Build function call data: mine(bytes32). The generic ABI encoder now
-    // handles fixed bytes types (bytes1..bytes32) as static ABI words.
-    string nonceWithPrefix = "0x" + nonceStr;
-    string functionData = contract.SetupContractData("mine(bytes32)", &nonceWithPrefix);
-    
-    // Get current transaction nonce (not mining nonce)
-    uint32_t txNonce = (uint32_t)EthGetTransactionCount(fromAddress);
-    
-    // Get current gas price
-    unsigned long long gasPrice = (unsigned long long)EthGasPrice();
-    
-    // Gas limit for mining (may require more gas than staking)
-    uint32_t gasLimit = 200000;
-    
-    // Send transaction with zero value
-    uint256_t zeroValue = 0;
-    string contractAddr = *miningContract;
-    string txHash = contract.SendTransaction(
-        txNonce,
-        gasPrice,
-        gasLimit,
-        &contractAddr,
-        &zeroValue,
-        &functionData
-    );
-    
-    return txHash;
-}
+#endif // APLO_ENABLE_HTTPS

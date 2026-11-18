@@ -1,6 +1,6 @@
 # Platform support
 
-AploEmbed targets Arduino-compatible WiFi boards. The example `platformio.ini` files intentionally keep only the default ESP32 environment so examples stay copy-paste friendly.
+AploEmbed targets Arduino-compatible WiFi boards. Each example includes esp32dev, esp32-c3-devkitm-1 and esp12e environments. ESP32 is the default.
 
 Use the platform-specific files below when building for another target:
 
@@ -14,14 +14,14 @@ Use the GitHub dependency directly:
 
 ```ini
 lib_deps =
-  https://github.com/AploCoin/AploEmbed.git#master
+  symlink:///absolute/path/to/AploEmbed
 ```
 
 For local source validation before pushing to GitHub, use an absolute local dependency path:
 
 ```ini
 lib_deps =
-  file:///absolute/path/to/AploEmbed
+  symlink:///absolute/path/to/AploEmbed
 ```
 
 If PlatformIO keeps compiling an older commit, remove the cached dependency:
@@ -51,8 +51,4 @@ Common causes of WiFi failure:
 
 ## TLS notes
 
-AploEmbed does not disable certificate validation automatically. The default `Web3()` constructor uses automatic bundled root CA resolution for public AploCoin HTTPS RPC endpoints.
-
-ESP32 supports PEM certificates and CA bundles. ESP8266 uses BearSSL and does not support ESP32 CA bundles. For production wallets, configure a real trust anchor and avoid insecure mode.
-
-See [security.md](security.md) for TLS details.
+Configure explicit [HTTPS trust profiles](tls-trust.md). Default trust is compact PEM; ESP32 bundles are optional, ESP8266 requires MFLN and has no mandatory filesystem/store. Missing or unsupported trust fails closed. ESP validates hostname, chain and time at connection; see the guide for pinned-core IP SAN limits.

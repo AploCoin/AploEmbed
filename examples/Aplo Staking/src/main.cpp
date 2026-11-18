@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <AploPlatform.h>
 #include <Web3.h>
+#include <ctime>
 #include <AploContracts.h>
 #include <Util.h>
 #include <Crypto.h>
@@ -137,11 +138,14 @@ void setup()
         delay(5000);
     }
 
-    // Initialize Web3 with default AploCoin RPC endpoints
-    // Uses pub1.aplocoin.com as primary, pub2.aplocoin.com as fallback
-    // Web3 auto-selects the bundled root CA for HTTPS RPC endpoints.
+    configTime(0, 0, "pool.ntp.org", "time.cloudflare.com");
+    while (time(nullptr) < 1609459200L) {
+        delay(250);
+    }
 
-
+    // Initialize Web3 with the explicit build profile
+    // The generated trust profile supplies primary/fallback URLs.
+    // Set APLO_TRUST_PROFILE at build time; see docs/tls-trust.md.
 
     myAddress = Crypto::PrivateKeyToAddress(PRIVATE_KEY);
 

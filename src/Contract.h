@@ -28,7 +28,11 @@ public:
 
 public:
     Contract(Web3* _web3, const char* address);
+#if APLO_ENABLE_HTTPS
     explicit Contract(long long int networkId);
+#else
+    explicit Contract(long long int) = delete;
+#endif
     ~Contract();
     Contract(const Contract&) = delete;
     Contract& operator=(const Contract&) = delete;

@@ -28,14 +28,12 @@ class StaticRegressionTests(unittest.TestCase):
             'balanceOf(address)',
             'getStake(address)',
             'getMultiplier(address)',
-            'miner_params(address)',
-            'mine(bytes32)',
         ]:
             self.assertIn(f'SetupContractData("{signature}"', web3)
 
     def test_trezor_includes_match_lowercase_repository_case(self):
         self.assertTrue((ROOT / 'src' / 'trezor' / 'rand.h').exists())
-        self.assertFalse((ROOT / 'src' / 'Trezor').exists())
+        self.assertNotIn('Trezor', [p.name for p in (ROOT / 'src').iterdir()])
         self.assertIn('#include "trezor/rand.h"', read('src/KeyID.h'))
         self.assertIn('#include "trezor/secp256k1.h"', read('src/Crypto.cpp'))
         self.assertIn('#include "trezor/ecdsa.h"', read('src/Crypto.cpp'))
@@ -67,17 +65,14 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('APLO_ESP8266_RPC_RESPONSE_MAX', header)
         self.assertIn('static WiFiClientSecure& getEsp8266Client()', web3)
         self.assertNotIn('esp8266ResponseBuffer', header)
-        self.assertIn('result.reserve(APLO_ESP8266_RPC_RESPONSE_MAX);', web3)
+        buffer = read('src/internal/RpcResponseBuffer.h')
+        self.assertIn('body_.reserve(limit_);', buffer)
+        self.assertIn('body_.size() < limit_', buffer)
         self.assertIn('HTTP response exceeds ESP8266 buffer', web3)
         self.assertIn('client = &getEsp8266Client();', web3)
-        self.assertNotIn('WiFiClientSecure scopedClient;', web3.split('#if defined(ESP8266)', 1)[1].split('#else', 1)[0])
-        self.assertIn('bool receiptStatusRequest = data->find("\\\"method\\\":\\\"eth_getTransactionReceipt\\\"")', web3)
-        self.assertIn('const char *receiptSuccessToken = "\\\"status\\\":\\\"0x1\\\"";', web3)
-        self.assertIn('const char *receiptRevertToken = "\\\"status\\\":\\\"0x0\\\"";', web3)
-        self.assertIn('return "{\\\"result\\\":{\\\"status\\\":\\\"0x1\\\"}}";', web3)
-        self.assertIn('return "{\\\"result\\\":{\\\"status\\\":\\\"0x0\\\"}}";', web3)
-        overflow_block = web3[web3.index('if (responseOverflow)'):web3.index('return result;', web3.index('if (responseOverflow)'))]
-        self.assertNotIn('endpoint.retryAfterMs = millis()', overflow_block)
+        self.assertIn('RpcResponseBuffer response(APLO_ESP8266_RPC_RESPONSE_MAX, receiptStatusRequest)', web3)
+        self.assertIn('response.Push(c);', web3)
+        self.assertIn('return response.Finish();', web3)
         self.assertIn('#else\n            result += c;\n#endif', web3)
 
     def test_esp8266_tls_initializes_x509_time_and_reports_bearssl_failures(self):
@@ -182,131 +177,6 @@ class StaticRegressionTests(unittest.TestCase):
             read('examples/Aplo Mining/ESP8266/src/main.cpp'),
         ]
 
-    def test_mining_hash_and_balance_regressions(self):
-        util = read('src/Util.cpp')
-        web3 = read('src/Web3.cpp')
-        mining = read('examples/Aplo Mining/src/main.cpp')
-        crypto_header = read('src/Crypto.h')
-        crypto_impl = read('src/Crypto.cpp')
-        self.assertIn('return ConvertBytesToHex(hash, 32);', util)
-        self.assertNotIn('return "0x" + ConvertBytesToHex(hash, 32);', util)
-        self.assertIn('stripHexPrefix(&h);', util)
-        self.assertIn('AploGetAploBalance', web3)
-        self.assertIn('AploGetGasBalance', web3)
-        self.assertIn('SetupContractData("mine(bytes32)"', web3)
-        self.assertIn('APLO Balance:', mining)
-        self.assertIn('Gas Balance (GAPLO):', mining)
-        self.assertIn('HASH_ATTEMPTS_PER_CYCLE 2000', mining)
-        self.assertIn('Web3 web3Instance;', mining)
-        self.assertIn('Web3 *web3 = &web3Instance;', mining)
-        self.assertNotIn('web3 = new Web3();', mining)
-        self.assertIn('static bool RandomBytes(uint8_t *buffer, size_t length);', crypto_header)
-        self.assertIn('bool Crypto::RandomBytes(uint8_t *buffer, size_t length)', crypto_impl)
-        self.assertIn('uint8_t packed[148];', mining)
-        self.assertIn('uint8_t nonce[32];', mining)
-        self.assertIn('uint8_t hash[32];', mining)
-        self.assertIn('Crypto::Keccak256(packed, sizeof(packed), hash);', mining)
-        self.assertIn('uint8_t totalMined[32];', mining)
-        self.assertIn('memcpy(packed + 116, params.totalMined, 32);', mining)
-        self.assertNotIn('(uint32_t)totalMined', mining)
-        self.assertIn('bool decodeAddress(const char *address, uint8_t output[20])', mining)
-        self.assertIn('if (!decodeAddress(address, addressBytes))', mining)
-        self.assertIn('Util::ConvertHexToBytes(output, address + 2, 20);', mining)
-        self.assertNotIn('Util::ConvertHexToBytes(output, address, 20);', mining)
-        hot_loop = mining[mining.index('bool attemptMining'):mining.index('bool submitMineTransaction')]
-        self.assertNotIn('String nonce', hot_loop)
-        self.assertNotIn('String hash', hot_loop)
-        self.assertNotIn('string packed', hot_loop)
-
-        mining_readme = read('examples/Aplo Mining/README.md')
-        self.assertIn('2000 nonces per cycle', mining_readme)
-        self.assertIn('re-reads `miner_params(address)`', mining_readme)
-        self.assertIn('best-effort client-side guard', mining_readme)
-        self.assertIn('status = 0x1', mining_readme)
-        self.assertIn('status = 0x0', mining_readme)
-        self.assertIn('final confirmation result', mining_readme)
-        self.assertNotIn('tries 2,000 nonces per cycle', mining_readme)
-
-    def test_mining_revalidates_work_before_broadcast(self):
-        mining = read('examples/Aplo Mining/src/main.cpp')
-        self.assertIn('bool minerParamsMatch(const MinerParams &left, const MinerParams &right)', mining)
-        self.assertIn('MinerParams freshParams = getMinerParams(address, false);', mining)
-        self.assertIn('if (!freshParams.valid)', mining)
-        self.assertIn('if (!minerParamsMatch(params, freshParams))', mining)
-        self.assertIn('mineHash(addressBytes, nonce, freshParams, freshHash);', mining)
-        self.assertIn('if (memcmp(freshHash, freshParams.currentDifficulty, 32) >= 0)', mining)
-        stale_check = mining.index('if (!minerParamsMatch(params, freshParams))')
-        submit = mining.index('return submitMineTransaction(nonce);')
-        self.assertLess(stale_check, submit)
-
-    def test_mining_does_not_report_broadcast_as_confirmation(self):
-        mining = read('examples/Aplo Mining/src/main.cpp')
-        self.assertIn('Transaction broadcast accepted:', mining)
-        self.assertIn('Execution is pending; waiting for on-chain confirmation.', mining)
-        self.assertIn('int EthGetTransactionReceiptStatus(const std::string* transactionHash);', read('src/Web3.h'))
-        self.assertIn('int Web3::EthGetTransactionReceiptStatus(const string* transactionHash)', read('src/Web3.cpp'))
-        self.assertIn('string normalizedHash = *transactionHash;', read('src/Web3.cpp'))
-        self.assertIn('normalizedHash.insert(0, "0x");', read('src/Web3.cpp'))
-        self.assertIn('const size_t resultKeyPos = output.find("\\\"result\\\"");', read('src/Web3.cpp'))
-        self.assertIn('const size_t errorPos = output.find("\\\"error\\\"");', read('src/Web3.cpp'))
-        self.assertIn('static size_t findJsonObjectEnd(const string& json, size_t objectStart)', read('src/Web3.cpp'))
-        self.assertIn('const size_t resultObjectEnd = findJsonObjectEnd(output, resultObjectPos);', read('src/Web3.cpp'))
-        self.assertIn('statusPos == string::npos || statusPos > resultObjectEnd', read('src/Web3.cpp'))
-        self.assertIn('static size_t findDirectJsonObjectKey(const string& json, size_t objectStart, size_t objectEnd, const char* key)', read('src/Web3.cpp'))
-        self.assertIn('const size_t statusPos = findDirectJsonObjectKey(output, resultObjectPos, resultObjectEnd, "status");', read('src/Web3.cpp'))
-        self.assertIn('MineConfirmation waitForMineConfirmation(const string &txHash)', mining)
-        self.assertIn('if (status == 1) return MINE_CONFIRMED;', mining)
-        self.assertIn('if (status == 0) return MINE_REVERTED;', mining)
-        self.assertIn('Successfully mined and confirmed transaction!', mining)
-        self.assertIn('Mining transaction reverted on-chain.', mining)
-        self.assertIn('Mining receipt unavailable after timeout; transaction may still be pending.', mining)
-        self.assertNotIn('still pending or reverted', mining)
-        self.assertNotIn('Successfully mined and submitted transaction!', mining)
-
-    def test_mining_restores_operational_diagnostics(self):
-        mining = read('examples/Aplo Mining/src/main.cpp')
-        for marker in [
-            'Miner Parameters:',
-            '  Last Block: ',
-            '  Total Mined: ',
-            '  Difficulty target: ',
-            'Expected attempts per valid nonce: ',
-            'Chance per 2,000-nonce batch: ',
-            'Serial.print(mantissa, 2);',
-            'Serial.print(F("e+"));',
-            'Current Block: ',
-            'Cooldown active: ',
-            'Cooldown complete, attempting to mine...',
-            'Hash: ',
-            'Submitting mine transaction...',
-            'Waiting for block cooldown before next attempt...',
-        ]:
-            self.assertIn(marker, mining)
-        self.assertIn('const uint32_t blocksSinceLastMine = currentBlockNumber >= params.lastBlock', mining)
-        self.assertIn('const uint32_t blocksRemaining = BLOCK_COOLDOWN - blocksSinceLastMine;', mining)
-        self.assertNotIn('params.lastBlock + BLOCK_COOLDOWN', mining)
-        self.assertIn("Serial.print(F(\".\"));", mining)
-        loop_start = mining.index('void loop()\n{')
-        balances_start = mining.index('void queryBalances(const char *address)\n{')
-        self.assertIn('queryBalances(myAddress.c_str());', mining[loop_start:balances_start])
-
-    def test_esp8266_mining_serial_literals_stay_in_flash(self):
-        mining = read('examples/Aplo Mining/src/main.cpp')
-        self.assertNotIn('Serial.print("', mining)
-        self.assertNotIn('Serial.println("', mining)
-        self.assertIn('Serial.println(F("', mining)
-
-    def test_esp8266_mining_defers_web3_until_after_wifi(self):
-        mining = read('examples/Aplo Mining/src/main.cpp')
-        self.assertIn('#if defined(ESP8266)\nWeb3 *web3 = nullptr;', mining)
-        self.assertIn('static Web3 esp8266Web3Instance;', mining)
-        wifi_connect = mining.index('while (!connectWifi(')
-        web3_init = mining.index('static Web3 esp8266Web3Instance;')
-        self.assertLess(wifi_connect, web3_init)
-        self.assertNotIn('Heap before WiFi:', mining)
-        self.assertNotIn('Heap after WiFi:', mining)
-        self.assertNotIn('Heap after Web3:', mining)
-
     def test_esp8266_disables_ram_heavy_precomputed_curve_table(self):
         options = read('src/trezor/options.h')
         self.assertIn('#if defined(ESP8266)', options)
@@ -335,10 +205,9 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertNotIn('sprintf(', conversion)
         self.assertIn('snprintf(', conversion)
 
-    def test_examples_are_self_contained_and_use_github_dependency(self):
+    def test_examples_use_the_current_checkout(self):
         self.assertFalse((ROOT / 'examples' / 'common').exists())
         expected_markers = {
-            'Aplo Mining': ['attemptMining', 'submitMineTransaction', 'WIFI_ATTEMPT_TIMEOUT_MS'],
             'Aplo Balance Query': ['queryAploBalance', 'queryGaploBalance'],
             'Aplo Send Transaction': ['sendAploToAddress', 'SEND_AMOUNT_APLO'],
             'Aplo Staking': ['queryStakingStatus', 'stakeAplo', 'STAKE_AMOUNT_APLO'],
@@ -351,7 +220,9 @@ class StaticRegressionTests(unittest.TestCase):
             self.assertIn('[env:esp32dev]', ini)
             self.assertIn('[env:esp32-c3-devkitm-1]', ini)
             self.assertIn('[env:esp12e]', ini)
-            self.assertIn('https://github.com/AploCoin/AploEmbed.git#master', ini)
+            self.assertIn('symlink://../..', ini)
+            self.assertIn('espressif32@6.12.0', ini)
+            self.assertIn('espressif8266@4.2.1', ini)
             self.assertNotIn('file://', ini)
             source = (root / 'src' / 'main.cpp').read_text()
             self.assertIn('void setup()', source)
@@ -363,7 +234,6 @@ class StaticRegressionTests(unittest.TestCase):
 
     def test_platform_specific_wifi_stays_inside_each_example(self):
         for example in [
-            'Aplo Mining',
             'Aplo Balance Query',
             'Aplo Send Transaction',
             'Aplo Staking',
@@ -390,7 +260,6 @@ class StaticRegressionTests(unittest.TestCase):
             read('examples/Aplo Balance Query/src/main.cpp'),
             read('examples/Aplo Send Transaction/src/main.cpp'),
             read('examples/Aplo Staking/src/main.cpp'),
-            read('examples/Aplo Mining/src/main.cpp'),
         ]
         for source in sources:
             self.assertNotIn('new Web3', source)
@@ -417,32 +286,18 @@ class StaticRegressionTests(unittest.TestCase):
 
     def test_get_string_has_no_debug_serial_output(self):
         web3 = read('src/Web3.cpp')
-        get_string = web3[web3.index('string Web3::getString'):web3.index('/**', web3.index('string Web3::getString'))]
+        get_string = web3[web3.index('string Web3::getString'):web3.index('bool Web3::setupCert', web3.index('string Web3::getString'))]
         self.assertNotIn('Serial.', get_string)
 
     def test_all_platform_examples_compile_against_local_sources(self):
-        """Optional integration gate: APLO_RUN_PLATFORMIO_MATRIX=1 enables all 12 builds."""
+        """Optional integration gate: APLO_RUN_PLATFORMIO_MATRIX=1 enables all base example builds."""
         import os
         import subprocess
 
         if os.environ.get('APLO_RUN_PLATFORMIO_MATRIX') != '1':
             self.skipTest('set APLO_RUN_PLATFORMIO_MATRIX=1 to run PlatformIO build matrix')
 
-        for example in [
-            'Aplo Mining',
-            'Aplo Balance Query',
-            'Aplo Send Transaction',
-            'Aplo Staking',
-        ]:
-            project_dir = ROOT / 'examples' / example
-            for environment in ['esp32dev', 'esp32-c3-devkitm-1', 'esp12e']:
-                with self.subTest(example=example, environment=environment):
-                    subprocess.run(
-                        ['uvx', '--from', 'platformio', 'platformio', 'run', '-e', environment],
-                        cwd=project_dir,
-                        check=True,
-                        timeout=600,
-                    )
+        subprocess.run(['python3', str(ROOT / 'tests' / 'build_examples.py')], check=True, timeout=2400)
 
     def test_remaining_runtime_audit_regressions_are_hardened(self):
         web3 = read('src/Web3.cpp')
@@ -504,7 +359,6 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('PrivateKeyToPublic(privateKeyBytes, publicKey)', crypto_impl)
         self.assertIn('PublicKeyToAddress(publicKey, address)', crypto_impl)
         for rel in [
-            'examples/Aplo Mining/src/main.cpp',
             'examples/Aplo Send Transaction/src/main.cpp',
             'examples/Aplo Staking/src/main.cpp',
         ]:

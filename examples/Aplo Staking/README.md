@@ -476,7 +476,7 @@ void loop()
 
 - **Aplo Balance Query**: Query APLO/Gaplo balances
 - **Aplo Send Transaction**: Send APLO to addresses
-- **Aplo Mining**: Mining operations with staking multipliers
+- **MiningEmbed / AploMiningFirmware**: separate mining library and board application; see the migration guide
 
 ## References
 

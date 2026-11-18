@@ -25,7 +25,7 @@ class KeyID;
 #include <string.h>
 #include <string>
 #include "AploContracts.h"
-#include "AploCertificates.h"
+#include "AploTlsConfig.h"
 
 #if defined(ESP8266)
 #define APLO_ESP8266_RPC_RESPONSE_MAX 768
@@ -41,44 +41,55 @@ enum ConnectionStage
 
 class Web3 {
 public:
-    // Default constructor: uses pub1.aplocoin.com as primary, pub2 as fallback
-    // TLS uses WiFiClientSecure defaults unless a CA bundle/certificate or explicit insecure mode is configured.
+    // Uses URLs and endpoint trust from the generated build profile.
+    // Without a profile, HTTPS fails closed until setCertificate() is called.
+#if APLO_ENABLE_HTTPS
     Web3();
-    
-    // Custom RPC constructor: specify primary RPC URL
+    // A custom primary has no implicit public fallback.
     Web3(const char* primaryRpcUrl);
-    
-    // Custom RPC with fallback: specify both primary and fallback URLs
     Web3(const char* primaryRpcUrl, const char* fallbackRpcUrl);
-    
-    // Legacy constructor for backward compatibility (chainId ignored, always uses APLO_ID)
-    Web3(long long chainId);
+    Web3(long long chainId); // Legacy: chainId remains APLO_ID.
+#else
+    Web3() = delete;
+    Web3(const char*) = delete;
+    Web3(const char*, const char*) = delete;
+    Web3(long long) = delete;
+#endif
     ~Web3();
 
     Web3(const Web3&) = delete;
     Web3& operator=(const Web3&) = delete;
-    
-    // Certificate validation configuration
-    // Call one of these methods BEFORE making any RPC calls when your platform requires explicit trust anchors.
-    
-    // Option 1: Use ESP32 CA certificate bundle (recommended for production)
-    // Requires: board_build.embed_files = data/cert/x509_crt_bundle.bin in platformio.ini
-    // See: https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/protocols/esp_crt_bundle.html
+
+    // Borrowed immutable buffers: keep PEM/bundle alive until replaced or Web3
+    // is destroyed. PEM is NUL terminated; ESP8266 accepts flash/PROGMEM PEM.
+    // A single PEM may contain multiple roots; every root then trusts BOTH URLs.
+    void setCertificate(const char* root_ca);
+    // Endpoint-specific roots, reusing one TLS client and one parsed X509List.
+    // nullptr disables trust for that endpoint; no inheritance from the other.
+    void setCertificate(const char* primary_ca, const char* fallback_ca);
+    // ESP32 only, opt in at build time with APLO_TLS_ENABLE_BUNDLE=1.
     void setCertificateBundle(const uint8_t* bundle_start);
     void setCertificateBundle(const uint8_t* bundle_start, size_t bundle_size);
-    
-    // Option 2: Use specific CA certificate (PEM format)
-    // Useful when you control the RPC endpoint and want to pin to a specific CA
-    void setCertificate(const char* root_ca);
-
-    // Option 3: Automatically pick the bundled root CA for known/common public RPC CAs.
-    // Defaults to ISRG Root X1, which validates Let's Encrypt endpoints.
+    // Compatibility name: select the explicit build profile, never discover CA.
     void setAutoCertificate();
-
-    // Option 4: Explicitly disable certificate validation (insecure, for testing only)
-    // This is never enabled automatically.
+    // Compatibility name retained; unauthenticated HTTPS is unavailable.
     void setInsecure();
-    
+
+    enum class TlsError {
+        None,
+        MissingTrust,
+        UnsupportedTrust,
+        InvalidTrust,
+        InvalidTime,
+        ConnectionFailed,
+        FragmentLength
+    };
+    TlsError tlsError() const {
+        return lastTlsError;
+    }
+
+    // Raw JSON-RPC response; used by exact-width native session API.
+    std::string RpcRequest(const std::string& method, const std::string& params);
     std::string Web3ClientVersion();
     std::string Web3Sha3(const std::string* data);
     int NetVersion();
@@ -102,7 +113,7 @@ public:
 
     // AploCoin-specific helpers
     // Balance helpers with unit conversion
-    // Note: 1 APLO = 10^18 Gaplo (wei), similar to ETH/wei relationship
+    // APLO and GAplo are separate assets; each uses 10^18 base units.
     uint256_t AploGetAploBalance(const std::string* address);  // APLO balance in wei units
     std::string AploGetAploBalanceString(const std::string* address);  // APLO balance as human-readable APLO
     uint256_t AploGetGasBalance(const std::string* address);  // Gas balance in Gaplo units
@@ -118,15 +129,6 @@ public:
     uint256_t AploGetStake(const std::string* stakingContract, const std::string* account);
     uint256_t AploGetStakeMultiplier(const std::string* stakingContract, const std::string* account);
     
-    // Mining helpers
-    // Returns: last_block, current_difficulty, total_mined, prev_hash
-    bool AploGetMinerParams(const std::string* miningContract, const std::string* minerAddress,
-                           uint256_t* lastBlock, uint256_t* currentDifficulty,
-                           uint256_t* totalMined, uint256_t* prevHash);
-    // Submit mining transaction with valid nonce (32-byte hex std::string)
-    // Returns transaction hash on success, empty std::string on failure
-    std::string AploMine(const std::string* miningContract, const std::string* nonce, const char* privateKey, const std::string* fromAddress);
-
     long long int getLongLong(const std::string* json);
     std::string getString(const std::string* json);
     int getInt(const std::string* json);
@@ -158,7 +160,7 @@ private:
     std::string execWithFailover(const std::string* data);  // RPC failover wrapper
     std::string generateJson(const std::string* method, const std::string* params);
     bool parseEndpoint(const char* url, RpcEndpoint* endpoint);
-    void setupCert();
+    bool setupCert(const RpcEndpoint& endpoint);
     void initWeb3(const char* primaryRpc, const char* fallbackRpc);
     
     long getLong(const std::string* json);
@@ -173,12 +175,13 @@ private:
     long long chainId;  // Fixed to APLO_ID (28282)
     
     // Certificate configuration state
-    enum CertMode { CERT_AUTO_RESOLVE, CERT_AUTO, CERT_BUNDLE, CERT_CA, CERT_INSECURE };
+    enum CertMode { CERT_PROFILE, CERT_BUNDLE, CERT_CA, CERT_UNAVAILABLE };
     CertMode certMode;
     const char* caCert;
     const uint8_t* certBundle;
     size_t certBundleSize;
-    const char* resolvedAutoCert;
+    const char* fallbackCaCert;
+    TlsError lastTlsError;
 #if defined(ESP8266)
     BearSSL::X509List* esp8266TrustAnchor;
     const char* esp8266TrustAnchorCert;

@@ -94,3 +94,6 @@ SendTransaction		KEYWORD2
 #######################################
  
 BYTE	LITERAL1
+SessionKeys	KEYWORD1
+SessionKey	KEYWORD1
+NativeTransaction	KEYWORD1

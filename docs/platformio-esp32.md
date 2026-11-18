@@ -1,6 +1,6 @@
 # PlatformIO: ESP32
 
-ESP32 is the default AploEmbed example target. The `platformio.ini` files under `examples/` intentionally keep only this standard ESP32 environment.
+ESP32 is the default AploEmbed example target. Each example includes this default ESP32 environment plus ESP32-C3 and ESP8266.
 
 ## Standard environment
 
@@ -9,13 +9,13 @@ ESP32 is the default AploEmbed example target. The `platformio.ini` files under 
 src_dir = .
 
 [env:esp32dev]
-platform = espressif32
+platform = espressif32@6.12.0
 board = esp32dev
 framework = arduino
 monitor_speed = 115200
 
 lib_deps =
-    https://github.com/AploCoin/AploEmbed.git#master
+    symlink:///absolute/path/to/AploEmbed
 
 build_flags =
     -DCORE_DEBUG_LEVEL=3
@@ -43,7 +43,7 @@ When validating local AploEmbed source changes before they are pushed to GitHub,
 
 ```ini
 lib_deps =
-    file:///absolute/path/to/AploEmbed
+    symlink:///absolute/path/to/AploEmbed
 ```
 
 If PlatformIO keeps compiling an older cached copy, remove the cached dependency and rebuild:
@@ -65,6 +65,4 @@ Avoid adding PSRAM flags by default. Add board-specific PSRAM flags only when th
 
 ## TLS
 
-ESP32 supports PEM trust anchors via `setCertificate(...)` and CA bundles via `setCertificateBundle(...)`.
-
-The default `Web3()` constructor uses automatic bundled root CA resolution for the public AploCoin HTTPS RPC endpoints. See [`security.md`](security.md) for certificate modes.
+PEM trust profiles are the default; CA bundle support requires `APLO_TLS_ENABLE_BUNDLE=1`. No CA is embedded in the SDK. Set endpoint URL/root inputs on the PC and synchronize device time before RPC. See [trust setup and device limits](tls-trust.md).

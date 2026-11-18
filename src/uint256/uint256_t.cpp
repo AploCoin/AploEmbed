@@ -35,26 +35,21 @@ uint256_t::uint256_t(const char * s) {
     init(s);
 }
 
-void uint256_t::init(const char * s) {
-    //create from string
-    char buffer[64];
-    if (s == NULL) { uint256_t(); return; }
-    if (s[1] == 'x')
-        s += 2;
-    else if (*s == 'x')
-        s++;
-
-    int len = strlen(s);
-    int padLength = 0;
-    if (len < 64) {
-        padLength = 64 - len;
-        memset(buffer, '0', padLength);
+void uint256_t::init(const char *s) {
+    UPPER = uint128_t(0); LOWER = uint128_t(0);
+    if (s == nullptr || *s == '\0') return;
+    if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) s += 2;
+    else if (*s == 'x') ++s;
+    const size_t length = strlen(s);
+    if (length > 64) return;
+    for (size_t i = 0; i < length; ++i) {
+        const char c = s[i];
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) return;
     }
-
-    memcpy(buffer + padLength, s, len);
-
-    UPPER = uint128_t(buffer);
-    LOWER = uint128_t(buffer + 32);
+    char padded[65]; memset(padded, '0', 64); padded[64] = '\0';
+    memcpy(padded + 64 - length, s, length);
+    char upper[33]; memcpy(upper, padded, 32); upper[32] = '\0';
+    UPPER = uint128_t(upper); LOWER = uint128_t(padded + 32);
 }
 
 uint256_t & uint256_t::operator=(const uint256_t & rhs){
@@ -514,7 +509,7 @@ std::vector<uint8_t> uint256_t::export_bits_truncate() const {
 
 	//prune the zeroes
 	int i = 0;
-	while (ret[i] == 0 && i < 64) i++;
+	while (i < static_cast<int>(ret.size()) && ret[i] == 0) i++;
 	ret.erase(ret.begin(), ret.begin() + i);
 
 	return ret;

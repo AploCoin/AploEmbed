@@ -242,7 +242,7 @@ string txHash = contract.SendTransaction(
 
 - **APLO** - Human-readable unit (like ETH)
 - **Gaplo** - Smallest unit, also called "wei"
-- **Conversion:** 1 APLO = 10^18 Gaplo
+- **Conversion:** 1 APLO = 10^18 APLO base units; GAplo is a separate fee asset
 
 ### Gas Units
 
