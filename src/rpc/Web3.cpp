@@ -6,6 +6,7 @@
 //
 
 #include "Web3.h"
+#include "internal/Esp8266Watchdog.h"
 
 #if APLO_ENABLE_HTTPS
 
@@ -536,7 +537,17 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
     client->setX509Time(now);
 #endif
 
-    if (!client->connect(host, endpoint.port)) {
+    bool connected;
+    {
+#if defined(ESP8266)
+        // The side stack cannot yield. Feed the soft watchdog from timer1
+        // until connect() returns. The firmware must leave room on that stack
+        // for this interrupt.
+        aplo::Esp8266WatchdogPause pauseWatchdog;
+#endif
+        connected = client->connect(host, endpoint.port);
+    }
+    if (!connected) {
         lastTlsError = TlsError::ConnectionFailed;
         Serial.print("Unable to connect to Host: ");
         Serial.println(host);

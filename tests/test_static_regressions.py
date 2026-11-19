@@ -183,6 +183,26 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('#define USE_PRECOMPUTED_CP 0', options)
         self.assertIn('#define USE_PRECOMPUTED_CP 1', options)
 
+    def test_esp8266_long_crypto_feeds_the_soft_watchdog(self):
+        ecdsa = read('src/trezor/ecdsa.c')
+        multiply = ecdsa[ecdsa.index('void point_multiply'):ecdsa.index('#if USE_PRECOMPUTED_CP')]
+        loop = multiply[multiply.index('for (i = 62; i >= 0; i--)'):]
+        self.assertIn('system_soft_wdt_feed()', loop)
+        self.assertIn('optimistic_yield(1000)', loop)
+        web3 = read('src/rpc/Web3.cpp')
+        handshake = web3[web3.index('bool connected;'):web3.index('if (!connected)')]
+        self.assertIn('Esp8266WatchdogPause pauseWatchdog', handshake)
+        self.assertIn('client->connect(host, endpoint.port)', handshake)
+        self.assertNotIn('wdtDisable', handshake)
+        self.assertNotIn('system_soft_wdt_stop', handshake)
+        feeder = read('src/internal/Esp8266Watchdog.cpp')
+        body = feeder[feeder.index('void IRAM_ATTR aplo_esp8266_feed_watchdog'):]
+        self.assertNotIn('system_soft_wdt_feed', body)
+        self.assertIn('flashByte', feeder)
+        self.assertIn('timer1_attachInterrupt(&aplo_esp8266_feed_watchdog)', feeder)
+        self.assertIn('timer1_disable()', feeder)
+        self.assertNotIn('wdtDisable', feeder)
+
     def test_esp8266_tls_uses_sni_aware_mfln_handshake(self):
         web3 = read('src/rpc/Web3.cpp')
         esp8266_exec = web3[web3.index('#if defined(ESP8266)', web3.index('string Web3::exec')):web3.index('#else', web3.index('#if defined(ESP8266)', web3.index('string Web3::exec')))]

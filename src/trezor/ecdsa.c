@@ -34,6 +34,11 @@
 #include "rfc6979.h"
 #include "memzero.h"
 
+#if defined(ESP8266)
+#include <user_interface.h>
+extern void optimistic_yield(uint32_t interval_us);
+#endif
+
 // Set cp2 = cp1
 void point_copy(const curve_point *cp1, curve_point *cp2)
 {
@@ -501,6 +506,11 @@ void point_multiply(const ecdsa_curve *curve, const bignum256 *k, const curve_po
 	bits &= 15;
 	curve_to_jacobian(&pmult[bits>>1], &jres, prime);
 	for (i = 62; i >= 0; i--) {
+#if defined(ESP8266)
+		// One scalar multiply exceeds the soft watchdog on an 80 MHz ESP8266.
+		system_soft_wdt_feed();
+		optimistic_yield(1000);
+#endif
 		// sign = sign(a[i+1])  (0xffffffff for negative, 0 for positive)
 		// invariant jres = (-1)^sign sum_{j=i+1..63} (a[j] * 16^{j-i-1} * p)
 		// abits >> (ashift - 4) = lowbits(a >> (i*4))
