@@ -13,6 +13,12 @@
 #include "Util.h"
 #include "TagReader/TagReader.h"
 #include "internal/RpcResponseBuffer.h"
+#include "internal/PemChain.h"
+#include "internal/RpcLog.h"
+#include <memory>
+#if !defined(ESP8266)
+#include <mbedtls/x509_crt.h>
+#endif
 #include <cctype>
 #include <cstdlib>
 #include <cstdio>
@@ -75,7 +81,7 @@ static bool ensureEsp8266X509Time() {
     }
 
     retryAfterMs = millis() + APLO_X509_TIME_RETRY_MS;
-    Serial.println(F("TLS paused: unable to synchronize certificate time"));
+    APLO_RPC_LOG("TLS paused: unable to synchronize certificate time");
     return false;
 }
 #endif
@@ -136,10 +142,7 @@ Web3::Web3(const char* primaryRpcUrl, const char* fallbackRpcUrl) {
 Web3::Web3(long long networkId) {
     // Ignore networkId parameter, always use APLO_ID
     if (networkId != APLO_ID) {
-        Serial.print("Warning: AploEmbed only supports AploCoin (chainId ");
-        Serial.print(APLO_ID);
-        Serial.print("), ignoring provided chainId ");
-        Serial.println(networkId);
+        APLO_RPC_LOG("Ignoring unsupported chain ID");
     }
 #ifdef APLO_TRUST_PROFILE_HEADER
     initWeb3(APLO_TRUST_PRIMARY_URL, APLO_TRUST_FALLBACK_URL);
@@ -150,13 +153,19 @@ Web3::Web3(long long networkId) {
 
 Web3::~Web3() {
 #if defined(ESP8266)
+    clearEsp8266Trust();
+#endif
+}
+
+#if defined(ESP8266)
+void Web3::clearEsp8266Trust() {
     getEsp8266Client().stop();
     getEsp8266Client().setTrustAnchors(nullptr);
     delete esp8266TrustAnchor;
     esp8266TrustAnchor = nullptr;
     esp8266TrustAnchorCert = nullptr;
-#endif
 }
+#endif
 
 // Certificate validation configuration methods
 
@@ -175,9 +184,100 @@ void Web3::setCertificate(const char* root_ca) {
 }
 
 void Web3::setCertificate(const char* primary_ca, const char* fallback_ca) {
+#if defined(ESP8266)
+    if (!primary_ca && !fallback_ca) {
+        clearEsp8266Trust();
+    }
+#endif
     certMode = CERT_CA;
     caCert = primary_ca;
     fallbackCaCert = fallback_ca;
+}
+
+#if defined(ESP8266)
+namespace {
+// A transient decoder validates every PEM object without allocating another
+// X509List or retaining certificate bytes alongside the active trust anchor.
+struct CertificateDecoder {
+    br_pem_decoder_context pem;
+    br_x509_decoder_context certificate;
+
+    static void Append(void* context, const void* data, size_t length) {
+        auto* self = static_cast<CertificateDecoder*>(context);
+        br_x509_decoder_push(&self->certificate, data, length);
+    }
+
+    bool Complete() {
+        return br_x509_decoder_last_error(&certificate) == 0 &&
+               br_x509_decoder_get_pkey(&certificate) != nullptr &&
+               br_x509_decoder_isCA(&certificate);
+    }
+};
+} // namespace
+#endif
+
+bool Web3::isValidCertificate(const char* pem) {
+    size_t length;
+    unsigned expected;
+    if (!aplo::detail::PemChain(pem, length, expected)) {
+        return false;
+    }
+#if defined(ESP8266)
+    std::unique_ptr<CertificateDecoder> decoder(new (std::nothrow) CertificateDecoder);
+    if (!decoder) {
+        return false;
+    }
+    br_pem_decoder_init(&decoder->pem);
+    unsigned parsed = 0;
+    bool inCertificate = false;
+    // The extra newline also finishes an END marker without a final newline.
+    for (size_t offset = 0; offset <= length; ++offset) {
+        const char c = offset == length ? '\n' : aplo::detail::PemByte(pem, offset);
+        if (br_pem_decoder_push(&decoder->pem, &c, 1) != 1) {
+            return false;
+        }
+        switch (br_pem_decoder_event(&decoder->pem)) {
+        case BR_PEM_BEGIN_OBJ:
+            if (inCertificate || strcmp(br_pem_decoder_name(&decoder->pem), "CERTIFICATE")) {
+                return false;
+            }
+            inCertificate = true;
+            br_x509_decoder_init(&decoder->certificate, nullptr, nullptr, nullptr, nullptr);
+            br_pem_decoder_setdest(&decoder->pem, CertificateDecoder::Append, decoder.get());
+            break;
+        case BR_PEM_END_OBJ:
+            if (!inCertificate || !decoder->Complete()) {
+                return false;
+            }
+            inCertificate = false;
+            ++parsed;
+            break;
+        case BR_PEM_ERROR:
+            return false;
+        default:
+            break;
+        }
+    }
+    return !inCertificate && parsed == expected;
+#else
+    mbedtls_x509_crt chain;
+    mbedtls_x509_crt_init(&chain);
+    // Positive values mean a partially parsed chain, which must also fail.
+    const int result =
+        mbedtls_x509_crt_parse(&chain, reinterpret_cast<const unsigned char*>(pem), length + 1);
+    unsigned parsed = 0;
+    bool allCa = true;
+    for (const mbedtls_x509_crt* cert = &chain; cert && cert->raw.p; cert = cert->next) {
+        ++parsed;
+#if defined(MBEDTLS_PRIVATE)
+        allCa = allCa && cert->MBEDTLS_PRIVATE(ca_istrue) == 1;
+#else
+        allCa = allCa && cert->ca_istrue == 1;
+#endif
+    }
+    mbedtls_x509_crt_free(&chain);
+    return result == 0 && parsed == expected && allCa;
+#endif
 }
 
 void Web3::setAutoCertificate() {
@@ -318,169 +418,36 @@ int Web3::EthGetTransactionCount(const string* address) {
     return getInt(&output);
 }
 
-static size_t findJsonObjectEnd(const string& json, size_t objectStart) {
-    if (objectStart >= json.size() || json[objectStart] != '{') {
-        return string::npos;
-    }
-
-    unsigned depth = 0;
-    bool inString = false;
-    bool escaped = false;
-    for (size_t i = objectStart; i < json.size(); ++i) {
-        const char c = json[i];
-        if (inString) {
-            if (escaped) {
-                escaped = false;
-            } else if (c == '\\') {
-                escaped = true;
-            } else if (c == '"') {
-                inString = false;
-            }
-            continue;
-        }
-
-        if (c == '"') {
-            inString = true;
-        } else if (c == '{') {
-            ++depth;
-        } else if (c == '}' && --depth == 0) {
-            return i;
-        }
-    }
-    return string::npos;
-}
-
-static size_t
-findDirectJsonObjectKey(const string& json, size_t objectStart, size_t objectEnd, const char* key) {
-    if (key == nullptr || objectStart >= objectEnd || objectEnd >= json.size()) {
-        return string::npos;
-    }
-
-    unsigned depth = 1;
-    for (size_t i = objectStart + 1; i < objectEnd;) {
-        const char c = json[i];
-        if (c == '{' || c == '[') {
-            ++depth;
-            ++i;
-            continue;
-        }
-
-        if (c == '}' || c == ']') {
-            if (depth > 0) {
-                --depth;
-            }
-            ++i;
-            continue;
-        }
-
-        if (c != '"') {
-            ++i;
-            continue;
-        }
-
-        const size_t stringStart = i + 1;
-        bool escaped = false;
-        ++i;
-        while (i < objectEnd) {
-            if (escaped) {
-                escaped = false;
-            } else if (json[i] == '\\') {
-                escaped = true;
-            } else if (json[i] == '"') {
-                break;
-            }
-            ++i;
-        }
-        if (i >= objectEnd) {
-            return string::npos;
-        }
-
-        if (depth == 1 && json.compare(stringStart, i - stringStart, key) == 0) {
-            size_t separator = json.find_first_not_of(" \r\n\t", i + 1);
-            if (separator < objectEnd && json[separator] == ':') {
-                return stringStart - 1;
-            }
-        }
-        ++i;
-    }
-    return string::npos;
-}
-
 int Web3::EthGetTransactionReceiptStatus(const string* transactionHash) {
-    if (transactionHash == nullptr || transactionHash->empty()) {
+    if (!transactionHash) {
         return -1;
     }
-
-    string normalizedHash = *transactionHash;
-    if (normalizedHash.rfind("0x", 0) != 0 && normalizedHash.rfind("0X", 0) != 0) {
-        normalizedHash.insert(0, "0x");
+    string hash = *transactionHash;
+    if (hash.rfind("0x", 0) != 0 && hash.rfind("0X", 0) != 0) {
+        hash.insert(0, "0x");
     }
-
-    string m = "eth_getTransactionReceipt";
-    string p = "[\"" + normalizedHash + "\"]";
-    string input = generateJson(&m, &p);
-    string output = execWithFailover(&input);
-    if (output.empty()) {
+    if (hash.size() != 66) {
         return -1;
     }
-
-    const size_t errorPos = output.find("\"error\"");
-    if (errorPos != string::npos) {
-        return -1;
+    hash[1] = 'x';
+    for (size_t i = 2; i < hash.size(); ++i) {
+        if (!isxdigit(static_cast<unsigned char>(hash[i]))) {
+            return -1;
+        }
     }
-
-    const size_t resultKeyPos = output.find("\"result\"");
-    if (resultKeyPos == string::npos) {
-        return -1;
+    const string output = RpcRequest("eth_getTransactionReceipt", "[\"" + hash + "\"]");
+    aplo::detail::JsonRpcParser parser;
+    for (char character : output) {
+        parser.Push(character);
     }
-
-    const size_t resultColonPos = output.find(':', resultKeyPos + 8);
-    if (resultColonPos == string::npos) {
-        return -1;
-    }
-
-    const size_t resultObjectPos = output.find_first_not_of(" \r\n\t", resultColonPos + 1);
-    if (resultObjectPos == string::npos || output[resultObjectPos] != '{') {
-        return -1;
-    }
-
-    const size_t resultObjectEnd = findJsonObjectEnd(output, resultObjectPos);
-    if (resultObjectEnd == string::npos) {
-        return -1;
-    }
-
-    const size_t statusPos =
-        findDirectJsonObjectKey(output, resultObjectPos, resultObjectEnd, "status");
-    if (statusPos == string::npos || statusPos > resultObjectEnd) {
-        return -1;
-    }
-
-    const size_t statusValuePos = output.find(':', statusPos + 8);
-    if (statusValuePos == string::npos || statusValuePos > resultObjectEnd) {
-        return -1;
-    }
-
-    const size_t statusQuotePos = output.find_first_not_of(" \r\n\t", statusValuePos + 1);
-    if (statusQuotePos == string::npos || statusQuotePos > resultObjectEnd ||
-        output[statusQuotePos] != '"') {
-        return -1;
-    }
-
-    const size_t statusEndPos = output.find('"', statusQuotePos + 1);
-    if (statusEndPos == string::npos || statusEndPos > resultObjectEnd) {
-        return -1;
-    }
-
-    const string status = output.substr(statusQuotePos + 1, statusEndPos - statusQuotePos - 1);
-    if (status == "0x1" || status == "1") {
+    switch (parser.ReceiptResult(hash.c_str())) {
+    case aplo::detail::JsonRpcParser::Receipt::Succeeded:
         return 1;
-    }
-
-    if (status == "0x0" || status == "0") {
+    case aplo::detail::JsonRpcParser::Receipt::Reverted:
         return 0;
+    default:
+        return -1;
     }
-
-    return -1;
 }
 
 string Web3::EthCall(
@@ -534,9 +501,6 @@ string Web3::EthSendSignedTransaction(const string* data, const uint32_t dataLen
     input = "{\"jsonrpc\":\"2.0\",\"method\":\"eth_sendRawTransaction\",\"params\":[\"";
     input += *data;
     input += "\"],\"id\":0}";
-#if 0
-    LOG(input);
-#endif
     string output = execWithFailover(&input);
     return getResult(&output);
 }
@@ -603,7 +567,7 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
     // The application owns clock synchronization on ESP32; never skip X509 time.
     if (time(nullptr) < 1609459200L) {
         lastTlsError = TlsError::InvalidTime;
-        Serial.println(F("TLS paused: valid system time unavailable"));
+        APLO_RPC_LOG("TLS paused: valid system time unavailable");
         client = nullptr;
         return "";
     }
@@ -615,15 +579,8 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
 
     if (!client->connect(host, endpoint.port)) {
         lastTlsError = TlsError::ConnectionFailed;
-        Serial.print("Unable to connect to Host: ");
-        Serial.println(host);
+        APLO_RPC_LOG("Unable to connect to RPC host");
 #if defined(ESP8266)
-        char sslError[128];
-        const int sslErrorCode = client->getLastSSLError(sslError, sizeof(sslError));
-        Serial.print(F("ESP8266 TLS error "));
-        Serial.print(sslErrorCode);
-        Serial.print(F(": "));
-        Serial.println(sslError);
         endpoint.retryAfterMs = millis() + APLO_RPC_FAILURE_COOLDOWN_MS;
 #endif
         client->stop();
@@ -634,8 +591,7 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
 #if defined(ESP8266)
     if (!client->getMFLNStatus()) {
         lastTlsError = TlsError::FragmentLength;
-        Serial.print("RPC host did not negotiate ESP8266 TLS MFLN: ");
-        Serial.println(host);
+        APLO_RPC_LOG("RPC host did not negotiate ESP8266 TLS MFLN");
         endpoint.retryAfterMs = millis() + APLO_RPC_FAILURE_COOLDOWN_MS;
         client->stop();
         client = nullptr;
@@ -685,7 +641,7 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
     }
 
     if (!headersComplete) {
-        Serial.println("Invalid or oversized HTTP response headers");
+        APLO_RPC_LOG("Invalid or oversized HTTP response headers");
 #if defined(ESP8266)
         endpoint.retryAfterMs = millis() + APLO_RPC_FAILURE_COOLDOWN_MS;
 #endif
@@ -721,7 +677,7 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
 
 #if defined(ESP8266)
     if (response.Overflow() && !receiptStatusRequest) {
-        Serial.println("HTTP response exceeds ESP8266 buffer");
+        APLO_RPC_LOG("HTTP response exceeds ESP8266 buffer");
         return "";
     }
 
@@ -908,8 +864,12 @@ bool Web3::setupCert(const RpcEndpoint& endpoint) {
         } else {
 #if defined(ESP8266)
             if (esp8266TrustAnchor == nullptr || esp8266TrustAnchorCert != pem) {
-                client->setTrustAnchors(nullptr);
-                delete esp8266TrustAnchor;
+                clearEsp8266Trust();
+                if (!isValidCertificate(pem)) {
+                    lastTlsError = TlsError::InvalidTrust;
+                    APLO_RPC_LOG("Invalid TLS certificate material");
+                    return false;
+                }
                 esp8266TrustAnchor = new (std::nothrow) BearSSL::X509List(pem);
                 esp8266TrustAnchorCert = pem;
             }
@@ -920,8 +880,8 @@ bool Web3::setupCert(const RpcEndpoint& endpoint) {
                 return true;
             }
 #else
-            if (*pem == '\0') {
-                lastTlsError = TlsError::MissingTrust;
+            if (!isValidCertificate(pem)) {
+                lastTlsError = TlsError::InvalidTrust;
             } else {
                 client->setCACert(pem);
                 return true;
@@ -929,11 +889,7 @@ bool Web3::setupCert(const RpcEndpoint& endpoint) {
 #endif
         }
     }
-    Serial.print(F("TLS trust unavailable for "));
-    Serial.print(endpoint.host.c_str());
-    Serial.print(F(" (profile missing, invalid or unsupported; code "));
-    Serial.print(static_cast<unsigned>(lastTlsError));
-    Serial.println(F(")"));
+    APLO_RPC_LOG("TLS trust unavailable (profile missing, invalid or unsupported)");
     return false;
 }
 
@@ -981,7 +937,7 @@ bool Web3::parseEndpoint(const char* url, RpcEndpoint* endpoint, bool requireHtt
         node = node.substr(8);
         endpoint->port = 443;
     } else if (node.rfind("http://", 0) == 0) {
-        Serial.println("HTTP RPC endpoints are not supported; use HTTPS");
+        APLO_RPC_LOG("HTTP RPC endpoints are not supported; use HTTPS");
         return false;
     } else if (requireHttps) {
         return false;
@@ -1009,8 +965,21 @@ bool Web3::parseEndpoint(const char* url, RpcEndpoint* endpoint, bool requireHtt
         return false;
     }
 
-    for (unsigned char c : endpoint->path) {
-        if (c <= 32 || c == 127 || c == '#') {
+    // HTTP origin-form target: URI ASCII only, with well-formed escapes.
+    // Never let runtime configuration inject a request line or rely on a
+    // server-specific interpretation of backslashes/other non-URI bytes.
+    const char* targetCharacters =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~!$&'()*+,;=:@/?";
+    for (size_t i = 0; i < endpoint->path.size(); ++i) {
+        const unsigned char c = endpoint->path[i];
+        if (c == '%') {
+            if (i + 2 >= endpoint->path.size() ||
+                !isxdigit(static_cast<unsigned char>(endpoint->path[i + 1])) ||
+                !isxdigit(static_cast<unsigned char>(endpoint->path[i + 2]))) {
+                return false;
+            }
+            i += 2;
+        } else if (!strchr(targetCharacters, c)) {
             return false;
         }
     }
@@ -1040,16 +1009,16 @@ string Web3::execWithFailover(const string* data) {
     }
 
     if (fallbackEndpoint.valid) {
-        Serial.println("Primary RPC failed, trying fallback...");
+        APLO_RPC_LOG("Primary RPC failed, trying fallback...");
         result = exec(data, fallbackEndpoint);
 
         if (!result.empty()) {
-            Serial.println("Fallback RPC succeeded");
+            APLO_RPC_LOG("Fallback RPC succeeded");
             return result;
         }
     }
 
-    Serial.println("All RPC endpoints failed");
+    APLO_RPC_LOG("All RPC endpoints failed");
     return "";
 }
 

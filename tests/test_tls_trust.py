@@ -2,6 +2,7 @@
 """Exercise actual Web3 with real synthetic HTTPS chains and offline profile tool."""
 
 import importlib.util
+import base64
 import json
 import os
 from pathlib import Path
@@ -23,6 +24,7 @@ spec = importlib.util.spec_from_file_location(
 profile = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(profile)
 OPENSSL = Path(os.environ.get("OPENSSL_PREFIX", "/opt/homebrew/opt/openssl@3"))
+MBEDTLS = Path(os.environ.get("MBEDTLS_PREFIX", "/opt/homebrew/opt/mbedtls@3"))
 
 
 class Server:
@@ -46,9 +48,15 @@ class Server:
                 with self.context.wrap_socket(connection, server_side=True) as peer:
                     request = peer.recv(8192)
                     if request:
-                        assert b"eth_chainId" in request
                         self.requests += 1
-                        data = b'{"jsonrpc":"2.0","id":0,"result":"0x539"}'
+                        if b"eth_getTransactionReceipt" in request:
+                            data = json.dumps({"jsonrpc": "2.0", "id": 0, "result": {
+                                "status": "0x1", "transactionHash": "0x" + "a" * 64,
+                                "logs": ["x" * 8192]
+                            }}).encode()
+                        else:
+                            assert b"eth_chainId" in request
+                            data = b'{"jsonrpc":"2.0","id":0,"result":"0x539"}'
                         peer.sendall(
                             b"HTTP/1.1 200 OK\r\nContent-Length: "
                             + str(len(data)).encode()
@@ -75,6 +83,15 @@ def build(work, generated=None):
     ]
     if "--esp8266" in sys.argv:
         flags.append("-DESP8266")
+        bearssl = Path(os.environ.get("APLO_BEARSSL_DIR", str(
+            Path(os.environ.get("PLATFORMIO_CORE_DIR", str(Path.home() / ".platformio"))) /
+            "packages/framework-arduinoespressif8266/tools/sdk/ssl/bearssl"
+        )))
+        flags.extend(["-I" + str(bearssl / "inc"), "-I" + str(bearssl / "src")])
+    else:
+        flags.append("-I" + str(MBEDTLS / "include"))
+    if "--quiet" in sys.argv:
+        flags.append("-DAPLO_RPC_SERIAL_LOGS=0")
     if generated:
         flags.append('-DAPLO_TRUST_PROFILE_HEADER="' + str(generated) + '"')
     sources = [
@@ -107,6 +124,8 @@ def build(work, generated=None):
         ROOT / "tests/tls/web3_tls.cpp",
         ROOT / "tests/tls/TlsClient.cpp",
     ]
+    if "--esp8266" in sys.argv:
+        sources.extend([bearssl / "src/codec/pemdec.c", bearssl / "src/x509/x509_decoder.c"])
     objects = []
     for src in sources:
         obj = work / (src.stem + ".o")
@@ -123,10 +142,13 @@ def build(work, generated=None):
             "c++",
             "-fsanitize=address,undefined",
             *objects,
-            "-Wl,-dead_strip",
+            "-Wl,-dead_strip" if sys.platform == "darwin" else "-Wl,--gc-sections",
             "-L" + str(OPENSSL / "lib"),
             "-lssl",
             "-lcrypto",
+            *([] if "--esp8266" in sys.argv else [
+                "-L" + str(MBEDTLS / "lib"), "-lmbedx509", "-lmbedcrypto"
+            ]),
             "-o",
             str(binary),
         ],
@@ -177,6 +199,25 @@ def main():
         overlap.write_bytes(ca[1].read_bytes() + other[1].read_bytes())
         case("valid", custom.url, "", True, 1, overlap)
         case("valid", good.url, "", True, 1, overlap)
+        der = ssl.PEM_cert_to_DER_cert(ca[1].read_text())
+        trailing_der = (b"-----BEGIN CERTIFICATE-----\n" +
+                        base64.encodebytes(der + b"\x00") + b"-----END CERTIFICATE-----\n")
+        # Valid DER SEQUENCE/base64, but not an X509 certificate. This reaches
+        # the platform parser, including mbedTLS's partial-chain return path.
+        broken = b"-----BEGIN CERTIFICATE-----\nMAMCAQA=\n-----END CERTIFICATE-----\n"
+        for index, data in enumerate((
+            broken, ca[1].read_bytes() + broken, broken + ca[1].read_bytes(),
+            ca[1].read_bytes() + b"-----BEGIN CERTIFICATE-----\n",
+            ca[1].read_bytes() + b"garbage", trailing_der,
+            ca[1].read_bytes() + ca[0].read_bytes(),
+            (work / "first.pem").read_bytes(),
+            ca[1].read_bytes() + (work / "first.pem").read_bytes(),
+        )):
+            malformed = work / ("malformed-%d.pem" % index)
+            malformed.write_bytes(data)
+            before = good.requests
+            case("invalid-root", good.url, "", False, 0, malformed)
+            assert good.requests == before
         for mode in ("missing", "bundle", "disabled", "no-time"):
             before = good.requests + custom.requests
             case(mode, good.url, custom.url, False, 0)

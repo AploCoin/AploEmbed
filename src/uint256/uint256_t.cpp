@@ -1,3 +1,4 @@
+#include "internal/RpcLog.h"
 #include "uint256_t.build"
 #include <vector>
 #include <cstring>
@@ -394,7 +395,7 @@ std::pair <uint256_t, uint256_t> uint256_t::divmod(const uint256_t & lhs, const 
     // Save some calculations /////////////////////
     if (rhs == uint256_0){
         //throw std::domain_error("Error: division or modulus by 0");
-        Serial.println("Error: division or modulus by 0");
+        APLO_RPC_LOG("Error: division or modulus by 0");
     }
     else if (rhs == uint256_1){
         return std::pair <uint256_t, uint256_t> (lhs, uint256_0);
@@ -537,7 +538,7 @@ uint16_t uint256_t::bits() const{
 
 std::string uint256_t::str(uint8_t base, const unsigned int & len) const{
     if ((base < 2) || (base > 36)){
-        Serial.println("Base must be in the range [2, 16]");
+        APLO_RPC_LOG("Base must be in the range [2, 16]");
         return 0;
     }
     std::string out = "";

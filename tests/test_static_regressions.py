@@ -75,13 +75,20 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('return response.Finish();', web3)
         self.assertIn('#else\n            result += c;\n#endif', web3)
 
-    def test_esp8266_tls_initializes_x509_time_and_reports_bearssl_failures(self):
+    def test_esp8266_tls_initializes_x509_time_and_uses_generic_diagnostics(self):
         web3 = read('src/rpc/Web3.cpp')
         self.assertIn('configTime(0, 0, "pool.ntp.org", "time.nist.gov")', web3)
         self.assertIn('client->setX509Time(now);', web3)
-        self.assertIn('client->getLastSSLError(sslError, sizeof(sslError))', web3)
-        self.assertIn('ESP8266 TLS error', web3)
+        self.assertIn('lastTlsError = TlsError::ConnectionFailed', web3)
+        self.assertNotIn('Serial.', web3)
+        self.assertIn('APLO_RPC_LOG("Unable to connect to RPC host")', web3)
         self.assertNotIn('client->setInsecure(); // ESP8266 workaround', web3)
+
+    def test_protocol_channel_has_no_raw_sdk_logs(self):
+        for path in (ROOT / 'src').rglob('*.cpp'):
+            self.assertNotIn('Serial.', path.read_text(), str(path))
+        self.assertIn('#define APLO_RPC_SERIAL_LOGS 1', read('src/AploTlsConfig.h'))
+        self.assertIn('#if APLO_RPC_SERIAL_LOGS', read('src/internal/RpcLog.h'))
 
     def test_rpc_failover_has_endpoint_failure_cooldown(self):
         header = read('src/Web3.h')

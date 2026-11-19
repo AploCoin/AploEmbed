@@ -56,7 +56,9 @@ objects.extend(
 )
 binary = OUT / "session-tests"
 subprocess.run(
-    ["c++", "-fsanitize=address,undefined", *objects, "-Wl,-dead_strip", "-o", str(binary)],
+    ["c++", "-fsanitize=address,undefined", *objects,
+     "-Wl,-dead_strip" if sys.platform == "darwin" else "-Wl,--gc-sections",
+     "-o", str(binary)],
     check=True,
 )
 # Sanitizer failures terminate the run; the absence of stderr is retained in logs.

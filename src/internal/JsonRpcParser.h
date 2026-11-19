@@ -23,6 +23,12 @@ public:
     void Push(char character);
     Outcome Result() const;
     Receipt ReceiptResult() const;
+    // Confirmed receipts must carry the exact requested transaction hash.
+    Receipt ReceiptResult(const char* expectedHash) const;
+
+    const char* TransactionHash() const {
+        return hashValid_ ? transactionHash_ : nullptr;
+    }
 
     Range ResultRange() const {
         return result_;
@@ -34,7 +40,7 @@ public:
 
 private:
     enum class Phase : uint8_t { First, Colon, Value, Separator, Key, ArrayValue };
-    enum class Key : uint8_t { Other, Result, Error, Status, Version, Id };
+    enum class Key : uint8_t { Other, Result, Error, Status, Version, Id, TransactionHash };
     enum class Number : uint8_t {
         Start,
         Minus,
@@ -85,13 +91,16 @@ private:
     bool resultObject_ = false;
     bool statusSeen_ = false;
     bool receiptInvalid_ = false;
+    bool hashSeen_ = false;
+    bool hashValid_ = false;
+    char transactionHash_[67] = {};
     Receipt receipt_ = Receipt::Invalid;
     Number number_ = Number::Start;
     unsigned unicodeRemaining_ = 0;
     unsigned unicodeValue_ = 0;
-    // Only short keys, protocol version, literals and status need matching.
+    // Only protocol keys, version, literals, status and the hash need matching.
     // Longer strings remain valid JSON and are skipped without allocation.
-    char token_[16];
+    char token_[66];
     size_t tokenLength_ = 0;
     bool tokenOverflow_ = false;
 };

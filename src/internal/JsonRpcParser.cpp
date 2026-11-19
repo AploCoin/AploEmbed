@@ -110,6 +110,12 @@ void JsonRpcParser::StartValue(char character) {
         }
         statusSeen_ = true;
     }
+    if (InReceipt() && key == Key::TransactionHash) {
+        if (hashSeen_ || character != '"') {
+            receiptInvalid_ = true;
+        }
+        hashSeen_ = true;
+    }
     if (character == '{' || character == '[') {
         if (depth_ == MaxDepth) {
             invalid_ = true;
@@ -167,8 +173,12 @@ void JsonRpcParser::FinishString() {
             } else if (TokenIs("id")) {
                 frame.key = Key::Id;
             }
-        } else if (InReceipt() && TokenIs("status")) {
-            frame.key = Key::Status;
+        } else if (InReceipt()) {
+            if (TokenIs("status")) {
+                frame.key = Key::Status;
+            } else if (TokenIs("transactionHash")) {
+                frame.key = Key::TransactionHash;
+            }
         }
         frame.phase = Phase::Colon;
         return;
@@ -184,6 +194,17 @@ void JsonRpcParser::FinishString() {
             receipt_ = Receipt::Reverted;
         } else {
             receipt_ = Receipt::Invalid;
+        }
+    }
+    if (InReceipt() && CurrentKey() == Key::TransactionHash) {
+        hashValid_ = !tokenOverflow_ && tokenLength_ == 66 && token_[0] == '0' && token_[1] == 'x';
+        for (size_t i = 2; hashValid_ && i < 66; ++i) {
+            hashValid_ = HexDigit(token_[i]) >= 0;
+        }
+        if (hashValid_) {
+            memcpy(transactionHash_, token_, 66);
+        } else {
+            receiptInvalid_ = true;
         }
     }
     FinishValue(offset_ + 1);
@@ -422,6 +443,24 @@ JsonRpcParser::Outcome JsonRpcParser::Result() const {
 
 JsonRpcParser::Receipt JsonRpcParser::ReceiptResult() const {
     return Result() == Outcome::Result && !receiptInvalid_ ? receipt_ : Receipt::Invalid;
+}
+
+JsonRpcParser::Receipt JsonRpcParser::ReceiptResult(const char* expectedHash) const {
+    const Receipt result = ReceiptResult();
+    if (result == Receipt::Pending || result == Receipt::Invalid) {
+        return result;
+    }
+    if (!expectedHash || strlen(expectedHash) != 66 || expectedHash[0] != '0' ||
+        expectedHash[1] != 'x' || !hashValid_) {
+        return Receipt::Invalid;
+    }
+    for (size_t i = 2; i < 66; ++i) {
+        if (HexDigit(expectedHash[i]) < 0 ||
+            HexDigit(expectedHash[i]) != HexDigit(transactionHash_[i])) {
+            return Receipt::Invalid;
+        }
+    }
+    return result;
 }
 
 } // namespace detail

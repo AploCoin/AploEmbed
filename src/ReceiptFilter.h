@@ -2,6 +2,7 @@
 #define APLO_RECEIPT_FILTER_H
 
 #include "internal/JsonRpcParser.h"
+#include <string>
 
 // Compatibility adapter for the constant-memory ESP8266 receipt path. Buffered
 // SessionKeys RPC uses the same grammar and direct-result/status selection.
@@ -24,7 +25,7 @@ public:
 
     // Only used after the ordinary response cap is exceeded. Empty/invalid
     // envelopes stay invalid; a node error is never reported as pending.
-    const char* CompactResponse() const {
+    std::string CompactResponse() const {
         using Parser = aplo::detail::JsonRpcParser;
         if (parser_.Result() == Parser::Outcome::RpcError) {
             return "{\"error\":{\"code\":-32000,\"message\":\"oversized RPC error\"}}";
@@ -34,9 +35,15 @@ public:
         case Parser::Receipt::Pending:
             return "{\"result\":null}";
         case Parser::Receipt::Succeeded:
-            return "{\"result\":{\"status\":\"0x1\"}}";
         case Parser::Receipt::Reverted:
-            return "{\"result\":{\"status\":\"0x0\"}}";
+            // Preserve identity through reduction; missing identity cannot
+            // become evidence for the caller's journal entry.
+            if (parser_.TransactionHash()) {
+                return std::string("{\"result\":{\"status\":\"0x") +
+                       (parser_.ReceiptResult() == Parser::Receipt::Succeeded ? "1" : "0") +
+                       "\",\"transactionHash\":\"" + parser_.TransactionHash() + "\"}}";
+            }
+            return "{}";
         case Parser::Receipt::Invalid:
             return "{}";
         }

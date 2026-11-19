@@ -193,6 +193,18 @@ SessionResult SessionKeys::PendingNonce(const string& signerAddress, uint64_t& n
     return checkedUint64(result, value, nonce);
 }
 
+SessionResult SessionKeys::LatestNonce(const string& signerAddress, uint64_t& nonce) {
+    nonce = 0;
+    if (!isAddress(signerAddress)) {
+        return invalidArgument("invalid signer address");
+    }
+
+    uint256_t value;
+    auto result =
+        Quantity("eth_getTransactionCount", "[\"" + signerAddress + "\",\"latest\"]", value);
+    return checkedUint64(result, value, nonce);
+}
+
 SessionResult SessionKeys::SendRaw(const string& raw, string& hash) {
     hash.clear();
     if (!isHex(raw) || raw.size() < 4) {
@@ -238,7 +250,7 @@ SessionResult SessionKeys::Receipt(const string& hash, ReceiptState& state) {
         parser.Push(character);
     }
     parser.Push('}');
-    switch (parser.ReceiptResult()) {
+    switch (parser.ReceiptResult(hash.c_str())) {
     case JsonRpcParser::Receipt::Pending:
         state = ReceiptState::Pending;
         return {};
@@ -249,7 +261,7 @@ SessionResult SessionKeys::Receipt(const string& hash, ReceiptState& state) {
         state = ReceiptState::Reverted;
         return {};
     case JsonRpcParser::Receipt::Invalid:
-        return {SessionError::InvalidResponse, "invalid receipt status"};
+        return {SessionError::InvalidResponse, "invalid receipt status or transaction hash"};
     }
 
     return {SessionError::InvalidResponse, "invalid receipt"};

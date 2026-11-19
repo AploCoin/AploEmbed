@@ -189,29 +189,38 @@ int main(int argc, char** argv) {
     memset(secret, 255, 32);
     assert(!key.Import(secret));
     assert(key.Generate());
-    for (const string json :
-         {R"({"result":{"status":"0x1","logs":[]}})",
-          R"({"jsonrpc":"2.0","result":{"logs":[{"status":"0x0"}],"status":"0x1"},"id":0})"}) {
+    for (
+        const string json : {
+            R"({"result":{"status":"0x1","transactionHash":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","logs":[]}})",
+            R"({"jsonrpc":"2.0","result":{"logs":[{"status":"0x0","transactionHash":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],"status":"0x1","transactionHash":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"id":0})"
+        }) {
         ReceiptFilter filter;
         for (char c : json) {
             filter.Push(c);
         }
         assert(filter.Status() == 1);
     }
-    for (const string json : {R"({"result":{"logs":[{"status":"0x1"}],"status":"0x0"}})"}) {
+    for (
+        const string json : {
+            R"({"result":{"logs":[{"status":"0x1","transactionHash":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],"status":"0x0","transactionHash":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}})"
+        }) {
         ReceiptFilter filter;
         for (char c : json) {
             filter.Push(c);
         }
         assert(filter.Status() == 0);
     }
-    for (const string json :
-         {R"({"result":{},"unrelated":{"status":"0x1"}})",
-          R"({"result":{"logs":[{"status":"0x1"}]}})",
-          R"({"result":{"status":"0x1"},"error":{"code":-1}})",
-          R"({"result":{"status":"0x1","status":"0x0"}})",
-          R"({"result":{"status":"0x1"},"result":null})", R"({"result":{"status":"0x1"},})",
-          R"({"result":{"status":"0x1"}}junk)", R"({"result":{"status":"0x1")"}) {
+    for (
+        const string json : {
+            R"({"result":{},"unrelated":{"status":"0x1","transactionHash":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}})",
+            R"({"result":{"logs":[{"status":"0x1","transactionHash":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}})",
+            R"({"result":{"status":"0x1","transactionHash":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"error":{"code":-1}})",
+            R"({"result":{"status":"0x1","transactionHash":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","status":"0x0","transactionHash":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}})",
+            R"({"result":{"status":"0x1","transactionHash":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"result":null})",
+            R"({"result":{"status":"0x1","transactionHash":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},})",
+            R"({"result":{"status":"0x1","transactionHash":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}junk)",
+            R"({"result":{"status":"0x1","transactionHash":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")"
+        }) {
         ReceiptFilter filter;
         for (char c : json) {
             filter.Push(c);
@@ -242,18 +251,24 @@ int main(int argc, char** argv) {
     assert(nonce == (UINT64_C(1) << 40));
     assert(f.lastParams.find(p.key) != string::npos);
     assert(f.lastParams.find("pending") != string::npos);
+    assert(rpc.LatestNonce(p.key, nonce));
+    assert(nonce == (UINT64_C(1) << 40));
+    assert(f.lastParams == "[\"" + p.key + "\",\"latest\"]");
     ReceiptState state = ReceiptState::Succeeded;
     f.response = R"({"result":null})";
     assert(rpc.Receipt("0x" + string(64, 'a'), state));
     assert(state == ReceiptState::Pending);
-    f.response = R"({"result":{"logs":[{"status":"0x1"}],"status":"0x0"}})";
+    f.response =
+        R"({"result":{"logs":[{"status":"0x1","transactionHash":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],"status":"0x0","transactionHash":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}})";
     assert(rpc.Receipt("0x" + string(64, 'a'), state));
     assert(state == ReceiptState::Reverted);
-    f.response = R"({"result":{"logs":[{"status":"0x1"}]}})";
+    f.response =
+        R"({"result":{"logs":[{"status":"0x1","transactionHash":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}})";
     assert(rpc.Receipt("0x" + string(64, 'a'), state).code == SessionError::InvalidResponse);
     f.response = R"({"error":{"code":-1,"message":"no receipt"}})";
     assert(rpc.Receipt("0x" + string(64, 'a'), state).code == SessionError::RpcError);
-    f.response = R"({"result":{"status":"0x1"}})";
+    f.response =
+        R"({"result":{"status":"0x1","transactionHash":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}})";
     assert(rpc.Receipt("0x" + string(64, 'a'), state));
     assert(state == ReceiptState::Succeeded);
     SessionStatus status;

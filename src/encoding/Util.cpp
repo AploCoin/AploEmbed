@@ -1,3 +1,4 @@
+#include "internal/RpcLog.h"
 // AploEmbed Utilities
 //
 // Specialized for AploCoin blockchain
@@ -563,10 +564,8 @@ vector<string>* Util::InterpretVectorResult(string* result) {
 
                 // checksum
                 if (breakDown.size() != (length + 2)) {
-                    Serial.println("Bad array result data.");
-                    for (itr = breakDown.begin(); itr != breakDown.end(); itr++) {
-                        Serial.println(*itr->c_str());
-                    }
+                    APLO_RPC_LOG("Bad array result data.");
+                    return retVal;
                 }
                 for (; itr != breakDown.end(); itr++) {
                     retVal->push_back(*itr);

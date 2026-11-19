@@ -1,3 +1,4 @@
+#include "internal/RpcLog.h"
 //
 // Created by James Brown on 2018/09/13.
 //
@@ -42,7 +43,7 @@ bool Crypto::Sign(BYTE* digest, BYTE* result) {
         }
     }
     if (allZero == true) {
-        Serial.println(
+        APLO_RPC_LOG(
             "Private key not set, generate a private key (eg use Metamask) and call "
             "Contract::SetPrivateKey with it."
         );

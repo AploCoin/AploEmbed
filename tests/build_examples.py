@@ -25,7 +25,7 @@ EXAMPLES = sys.argv[1:] or [
     "Aplo Staking",
     "Aplo Session Keys",
 ]
-BOARDS = ["esp12e", "esp32dev", "esp32-c3-devkitm-1"]
+BOARDS = os.environ.get("APLO_BUILD_BOARDS", "esp12e esp32dev esp32-c3-devkitm-1").split()
 
 
 def snapshot():
@@ -46,6 +46,8 @@ def build_example(name):
     # Resolve the example's relative checkout link after moving the build harness.
     config = (ROOT / "examples" / name / "platformio.ini").read_text()
     config = config.replace("symlink://../..", "symlink://" + str(ROOT))
+    config = config.replace("pre:../../tools/trust/platformio.py",
+                            "pre:" + str(ROOT / "tools/trust/platformio.py"))
     (target / "platformio.ini").write_text(config)
     results = []
     for board in BOARDS:

@@ -1,6 +1,6 @@
 {
   "name": "AploEmbed",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Arduino SDK for Aplo native balances, transactions, staking and delegated session keys.",
   "keywords": [
     "AploCoin",

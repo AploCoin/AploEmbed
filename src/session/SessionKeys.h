@@ -143,10 +143,13 @@ public:
     SessionResult BlockNumber(uint64_t& block);
     SessionResult GasPrice(uint256_t& price);
     SessionResult PendingNonce(const std::string& signerAddress, uint64_t& nonce);
+    // Confirmed account nonce; exact uint64, never substitutes pending state.
+    SessionResult LatestNonce(const std::string& signerAddress, uint64_t& nonce);
     SessionResult Read(const std::string& key, const std::string& owner, SessionStatus& status);
     // Returns a hash only for accepted submission, never implies receipt success.
     SessionResult SendRaw(const std::string& raw, std::string& hash);
-    // State is updated only on success; errors never imply Pending.
+    // State is updated only on success; errors never imply Pending. Confirmed
+    // receipts require a direct transactionHash matching the requested hash.
     SessionResult Receipt(const std::string& hash, ReceiptState& state);
     // Reads chain/head/owner pending nonce; checks expiry and proof, builds zero-value owner
     // transaction.

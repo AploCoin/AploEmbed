@@ -7,4 +7,8 @@
 #ifndef APLO_TLS_ENABLE_BUNDLE
 #define APLO_TLS_ENABLE_BUNDLE 0
 #endif
+// Build-wide opt out for applications using Serial as a protocol channel.
+#ifndef APLO_RPC_SERIAL_LOGS
+#define APLO_RPC_SERIAL_LOGS 1
+#endif
 #endif

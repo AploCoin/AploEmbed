@@ -16,7 +16,6 @@ void ScriptClient::checkClientAPI(const char* route, APICallback callback) {
             timeout = 0;
             // if there's bytes to read from the client,
             char c = read(); // read a byte, then
-            Serial.write(c); // print it out the serial monitor
             *sc_data += c;
             if (c == '\n' && currentLineIsBlank) {
                 scanAPI(route, callback);

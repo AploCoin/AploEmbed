@@ -55,11 +55,13 @@ public:
     Web3& operator=(const Web3&) = delete;
 
     // Borrowed immutable buffers: keep PEM/bundle alive until replaced or Web3
-    // is destroyed. PEM is NUL terminated; ESP8266 accepts flash/PROGMEM PEM.
+    // is destroyed. PEM is NUL terminated; RAM is supported on both platforms,
+    // and ESP8266 also accepts flash/PROGMEM PEM. Never mutate borrowed PEM.
     // A single PEM may contain multiple roots; every root then trusts BOTH URLs.
     void setCertificate(const char* root_ca);
     // Endpoint-specific roots, reusing one TLS client and one parsed X509List.
     // nullptr disables trust for that endpoint; no inheritance from the other.
+    // Both nullptr immediately stop/detach/free cached ESP8266 parsed trust.
     void setCertificate(const char* primary_ca, const char* fallback_ca);
     // ESP32 only, opt in at build time with APLO_TLS_ENABLE_BUNDLE=1.
     void setCertificateBundle(const uint8_t* bundle_start);
@@ -67,6 +69,11 @@ public:
     // Compatibility name: select the explicit build profile, never discover CA.
     void setAutoCertificate();
     static bool isHttpsUrl(const char* url);
+    // Validate a NUL-terminated CA-only chain (1..4096 PEM bytes).
+    // Accepts immutable RAM on both platforms and PROGMEM on ESP8266. This
+    // requires BasicConstraints CA=true for each certificate; this does not
+    // check server identity, validity time, self-signatures or chain trust.
+    static bool isValidCertificate(const char* pem);
     // Compatibility name retained; unauthenticated HTTPS is unavailable.
     void setInsecure();
 
@@ -182,6 +189,9 @@ private:
     static bool parseEndpoint(const char* url, RpcEndpoint* endpoint, bool requireHttps = false);
     bool setupCert(const RpcEndpoint& endpoint);
     void initWeb3(const char* primaryRpc, const char* fallbackRpc);
+#if defined(ESP8266)
+    void clearEsp8266Trust();
+#endif
 
     long getLong(const std::string* json);
     double getDouble(const std::string* json);

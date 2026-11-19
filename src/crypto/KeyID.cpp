@@ -1,3 +1,4 @@
+#include "internal/RpcLog.h"
 #include <KeyID.h>
 #include "Util.h"
 
@@ -11,13 +12,12 @@ KeyID::KeyID(Web3* web3) : recoveredKey(false), crypto(web3) {
     memset(privateKeyBytes, 0, sizeof(privateKeyBytes));
 
     if (!beginKeyStorage()) {
-        Serial.println("failed to initialise EEPROM");
+        APLO_RPC_LOG("failed to initialise EEPROM");
         return;
     }
 
     if (static_cast<uint8_t>(EEPROM.read(0)) == 64) {
-        Serial.println();
-        Serial.println("Recovering key from EEPROM");
+        APLO_RPC_LOG("Recovering key from EEPROM");
         for (int i = 0; i < ETHERS_PRIVATEKEY_LENGTH; i++) {
             privateKeyBytes[i] = static_cast<uint8_t>(EEPROM.read(i + 1));
         }
@@ -44,7 +44,7 @@ bool KeyID::beginKeyStorage() {
 void KeyID::generatePrivateKey(Web3* web3) {
     (void)web3;
     if (!Crypto::RandomBytes(privateKeyBytes, ETHERS_PRIVATEKEY_LENGTH)) {
-        Serial.println("Warning: hardware CSPRNG unavailable; private key was not generated");
+        APLO_RPC_LOG("Warning: hardware CSPRNG unavailable; private key was not generated");
         recoveredKey = false;
         return;
     }
@@ -57,7 +57,7 @@ void KeyID::generatePrivateKey(Web3* web3) {
     }
 
     if (!EEPROM.commit()) {
-        Serial.println("failed to persist private key to EEPROM");
+        APLO_RPC_LOG("failed to persist private key to EEPROM");
         recoveredKey = false;
         return;
     }
@@ -78,8 +78,6 @@ void KeyID::getSignature(uint8_t* signature, BYTE* msgBytes, int length) {
 void KeyID::initPrivateKey(const std::string& privateKey) {
     crypto.SetPrivateKey(privateKey.c_str());
     recoveredKey = true;
-    Serial.print("Device Address: ");
-    Serial.println(getAddress().c_str());
 }
 
 const std::string KeyID::getAddress() {
