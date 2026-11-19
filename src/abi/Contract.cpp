@@ -10,6 +10,7 @@
 #include "AploPlatform.h"
 #include "Util.h"
 #include <vector>
+#include <cstdarg>
 #include <cstdlib>
 #include <cstdio>
 
@@ -614,7 +615,8 @@ vector<uint8_t> Contract::RlpEncode(
     vector<uint8_t> to = Util::ConvertHexToVector(toStr);
     vector<uint8_t> value = val->export_bits_truncate();
     vector<uint8_t> data = Util::ConvertHexToVector(dataStr);
-    vector<uint8_t> chainId = Util::ConvertNumberToVector(uint64_t(web3->getChainId()));
+    vector<uint8_t> chainId =
+        Util::ConvertNumberToVector(static_cast<unsigned long long>(web3->getChainId()));
 
     string zeroStr = "0";
     vector<uint8_t> zero = Util::ConvertHexToVector(&zeroStr);
