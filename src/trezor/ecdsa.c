@@ -34,6 +34,10 @@
 #include "rfc6979.h"
 #include "memzero.h"
 
+#if defined(ARDUINO_ARCH_ESP8266)
+#include <user_interface.h>
+#endif
+
 // Set cp2 = cp1
 void point_copy(const curve_point *cp1, curve_point *cp2)
 {
@@ -501,6 +505,10 @@ void point_multiply(const ecdsa_curve *curve, const bignum256 *k, const curve_po
 	bits &= 15;
 	curve_to_jacobian(&pmult[bits>>1], &jres, prime);
 	for (i = 62; i >= 0; i--) {
+#if defined(ARDUINO_ARCH_ESP8266)
+		// Keep the watchdog fed without yielding while using static scratch buffers.
+		system_soft_wdt_feed();
+#endif
 		// sign = sign(a[i+1])  (0xffffffff for negative, 0 for positive)
 		// invariant jres = (-1)^sign sum_{j=i+1..63} (a[j] * 16^{j-i-1} * p)
 		// abits >> (ashift - 4) = lowbits(a >> (i*4))
