@@ -1,6 +1,7 @@
 #include "internal/RpcLog.h"
 #include "uint128_t.build"
 #include <Arduino.h>
+#include <cstring>
 
 const uint128_t uint128_0(0);
 const uint128_t uint128_1(1);
