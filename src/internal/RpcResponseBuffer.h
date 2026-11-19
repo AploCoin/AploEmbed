@@ -39,6 +39,7 @@ public:
         if (!overflow_) {
             return std::move(body_);
         }
+
         return receipt_ ? filter_.CompactResponse() : "";
     }
 

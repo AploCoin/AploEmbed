@@ -28,6 +28,7 @@ bool connectWiFi() {
         Serial.println(F("WiFi timeout"));
         return false;
     }
+
     return true;
 }
 
@@ -36,19 +37,26 @@ bool checked(const aplo::SessionResult& result) {
         Serial.println(result.message.c_str());
         return false;
     }
+
     return true;
 }
 
-bool prepareRegistration(aplo::SessionKeys& sessions, aplo::SessionPolicy& policy,
-                         uint256_t& chainId, aplo::NativeTransaction& registration) {
+bool prepareRegistration(
+    aplo::SessionKeys& sessions,
+    aplo::SessionPolicy& policy,
+    uint256_t& chainId,
+    aplo::NativeTransaction& registration
+) {
     uint64_t head;
     if (!checked(sessions.ChainId(chainId)) || !checked(sessions.BlockNumber(head))) {
         return false;
     }
+
     if (head > UINT64_MAX - SESSION_LIFETIME_BLOCKS) {
         Serial.println(F("Block height cannot accommodate session lifetime"));
         return false;
     }
+
     policy.key = sessionKey.Address();
     policy.target = APLO_STAKING_CONTRACT;
     policy.selectors.push_back({{0xa9, 0x05, 0x9c, 0xbb}}); // transfer(address,uint256)
@@ -60,8 +68,10 @@ bool prepareRegistration(aplo::SessionKeys& sessions, aplo::SessionPolicy& polic
     if (!checked(sessions.AcceptanceProof(policy, OWNER, chainId, sessionKey, proof))) {
         return false;
     }
+
     return checked(
-        sessions.PrepareCreate(policy, OWNER, proof, REGISTRATION_GAS_LIMIT, registration));
+        sessions.PrepareCreate(policy, OWNER, proof, REGISTRATION_GAS_LIMIT, registration)
+    );
 }
 
 void printRegistration(const aplo::NativeTransaction& registration) {
@@ -88,14 +98,17 @@ void setup() {
         Serial.println(F("Configure owner, RPC and WiFi first"));
         return;
     }
+
     if (!connectWiFi()) {
         return;
     }
+
     // ESP hardware entropy requires the WiFi radio to be active.
     if (!sessionKey.Generate()) {
         Serial.println(F("CSPRNG failed"));
         return;
     }
+
     configTime(0, 0, "pool.ntp.org", "time.cloudflare.com");
     while (time(nullptr) < 1609459200L) {
         delay(250);
@@ -108,6 +121,7 @@ void setup() {
     if (!prepareRegistration(sessions, policy, chainId, registration)) {
         return;
     }
+
     printRegistration(registration);
 
     // Integration continues here: retain this exact public policy and chainId.

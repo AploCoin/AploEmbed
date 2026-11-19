@@ -128,7 +128,7 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('string paramStr;', contract)
         self.assertIn('vector<uint8_t> param = RlpEncodeForRawTransaction', contract)
         self.assertIn('paramStr = Util::VectorToString(&param);', contract)
-        self.assertIn('static void appendRlpItem(vector<uint8_t>& output, const uint8_t *input, size_t inputLen)', contract)
+        self.assertIn('static void appendRlpItem(vector<uint8_t>& output, const uint8_t* input, size_t inputLen)', contract)
         raw_rlp = contract[contract.index('vector<uint8_t> Contract::RlpEncodeForRawTransaction'):]
         for temporary in ['outputNonce', 'outputGasPrice', 'outputGasLimit', 'outputTo',
                           'outputValue', 'outputData', 'vector<uint8_t> R(',
@@ -150,7 +150,7 @@ class StaticRegressionTests(unittest.TestCase):
         tag_reader = read('src/TagReader/TagReader.cpp')
         web3 = read('src/rpc/Web3.cpp')
         util = read('src/encoding/Util.cpp')
-        self.assertIn('size_t TagReader::parse(char *jsonBuffer)', tag_reader)
+        self.assertIn('size_t TagReader::parse(char* jsonBuffer)', tag_reader)
         self.assertIn("*p = '\\0';", tag_reader)
         self.assertIn('TagReader reader;', web3)
         self.assertIn('return reader.getTag(json, "result");', web3)
@@ -246,7 +246,7 @@ class StaticRegressionTests(unittest.TestCase):
             self.assertNotIn('onStationModeGotIP', source)
             self.assertNotIn('onStationModeDHCPTimeout', source)
             self.assertIn('WiFi.localIP() != IPAddress(static_cast<uint32_t>(0))', source)
-            self.assertIn('WiFi.config(IPAddress(static_cast<uint32_t>(0)),', source)
+            self.assertRegex(source, r'WiFi\.config\(\s*IPAddress\(static_cast<uint32_t>\(0\)\),')
             self.assertIn('45000UL', source)
             self.assertNotIn('WiFi.disconnect(false)', source)
             self.assertIn('#elif defined(ESP32)', source)
@@ -355,7 +355,7 @@ class StaticRegressionTests(unittest.TestCase):
     def test_examples_derive_sender_address_from_private_key(self):
         crypto_header = read('src/Crypto.h')
         crypto_impl = read('src/crypto/Crypto.cpp')
-        self.assertIn('PrivateKeyToAddress(const char *privateKey)', crypto_header)
+        self.assertIn('PrivateKeyToAddress(const char* privateKey)', crypto_header)
         self.assertIn('PrivateKeyToPublic(privateKeyBytes, publicKey)', crypto_impl)
         self.assertIn('PublicKeyToAddress(publicKey, address)', crypto_impl)
         for rel in [

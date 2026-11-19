@@ -8,16 +8,18 @@
 
 #define EEPROM_SIZE ETHERS_PRIVATEKEY_LENGTH
 
-class KeyID 
-{
+class KeyID {
 public:
     KeyID(Web3* web3);
     KeyID(Web3* web3, const std::string& privateKey);
     void generatePrivateKey(Web3* web3);
-    void getSignature(uint8_t* signature, BYTE *msgBytes, int length);
+    void getSignature(uint8_t* signature, BYTE* msgBytes, int length);
     const std::string getAddress();
-    bool hasRecoveredKey() { return recoveredKey; };
-	
+
+    bool hasRecoveredKey() {
+        return recoveredKey;
+    };
+
 private:
     bool beginKeyStorage();
     void initPrivateKey(const std::string& privateKey);

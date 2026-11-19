@@ -38,6 +38,7 @@ bool SessionKey::Import(const uint8_t secret[32]) {
     if (!secret || !isValidScalar(secret)) {
         return false;
     }
+
     memcpy(secret_, secret, 32);
     valid_ = true;
     return true;
@@ -47,6 +48,7 @@ bool SessionKey::Export(uint8_t secret[32]) const {
     if (!secret || !valid_) {
         return false;
     }
+
     memcpy(secret, secret_, 32);
     return true;
 }
@@ -58,6 +60,7 @@ bool SessionKey::Generate() {
             Clear();
             return false;
         }
+
         if (isValidScalar(secret_)) {
             valid_ = true;
             return true;
@@ -77,6 +80,7 @@ string SessionKey::Address() const {
     if (!valid_) {
         return "";
     }
+
     uint8_t publicKey[65];
     ecdsa_get_public_key65(&secp256k1, secret_, publicKey);
     return publicAddress(publicKey);
@@ -86,6 +90,7 @@ bool SessionKey::SignDigest(const uint8_t digest[32], uint8_t signature[65], voi
     if (!digest || !signature || !context) {
         return false;
     }
+
     auto* key = static_cast<SessionKey*>(context);
     memset(signature, 0, 65);
     if (!key->valid_ ||
@@ -95,6 +100,7 @@ bool SessionKey::SignDigest(const uint8_t digest[32], uint8_t signature[65], voi
         memzero(signature, 65);
         return false;
     }
+
     return true;
 }
 
@@ -102,6 +108,7 @@ bool detail::canonicalSignature(const uint8_t signature[65]) {
     if (signature[64] > 1) {
         return false;
     }
+
     bignum256 signatureR, signatureS;
     bn_read_be(signature, &signatureR);
     bn_read_be(signature + 32, &signatureS);
@@ -110,11 +117,15 @@ bool detail::canonicalSignature(const uint8_t signature[65]) {
            !bn_is_less(&secp256k1.order_half, &signatureS);
 }
 
-bool detail::signatureMatches(const uint8_t* signature, const uint8_t* digest,
-                              const string& expected) {
+bool detail::signatureMatches(
+    const uint8_t* signature,
+    const uint8_t* digest,
+    const string& expected
+) {
     if (!isAddress(expected) || !canonicalSignature(signature)) {
         return false;
     }
+
     uint8_t publicKey[65];
     return ecdsa_recover_pub_from_sig(&secp256k1, publicKey, signature, digest, signature[64]) ==
                0 &&

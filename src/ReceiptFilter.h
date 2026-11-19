@@ -29,6 +29,7 @@ public:
         if (parser_.Result() == Parser::Outcome::RpcError) {
             return "{\"error\":{\"code\":-32000,\"message\":\"oversized RPC error\"}}";
         }
+
         switch (parser_.ReceiptResult()) {
         case Parser::Receipt::Pending:
             return "{\"result\":null}";
@@ -39,6 +40,7 @@ public:
         case Parser::Receipt::Invalid:
             return "{}";
         }
+
         return "{}";
     }
 

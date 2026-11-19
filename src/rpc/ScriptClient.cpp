@@ -1,106 +1,113 @@
 #include <ScriptClient.h>
 
-static std::string *sc_data = NULL;
-static APIReturn *apiReturn = NULL;
+static std::string* sc_data = NULL;
+static APIReturn* apiReturn = NULL;
 
-void ScriptClient::checkClientAPI(const char *route, APICallback callback)
-{
+void ScriptClient::checkClientAPI(const char* route, APICallback callback) {
     boolean currentLineIsBlank = true;
     String currentLine = ""; // make a String to hold incoming data from the client
     int timeout = 0;
-    if (sc_data == NULL) sc_data = new std::string();
+    if (sc_data == NULL) {
+        sc_data = new std::string();
+    }
 
-    while (connected())
-    {   
-        if (available())
-        {
+    while (connected()) {
+        if (available()) {
             timeout = 0;
             // if there's bytes to read from the client,
-            char c = read();        // read a byte, then
-            Serial.write(c);        // print it out the serial monitor
+            char c = read(); // read a byte, then
+            Serial.write(c); // print it out the serial monitor
             *sc_data += c;
-            if (c == '\n' && currentLineIsBlank)
-            {
+            if (c == '\n' && currentLineIsBlank) {
                 scanAPI(route, callback);
                 break;
             }
-            if (c == '\n')
-            { // if you got a newline, then clear currentLine
+
+            if (c == '\n') { // if you got a newline, then clear currentLine
                 currentLine = "";
                 currentLineIsBlank = true;
-            }
-            else if (c != '\r')
-            {
+            } else if (c != '\r') {
                 currentLineIsBlank = false;
                 currentLine += c;
             }
-        }
-        else
-        {
+        } else {
             delay(1);
-            if (timeout++ > 500)
+            if (timeout++ > 500) {
                 break;
+            }
         }
     }
 
-    //Ensure connection is always closed after opening
+    // Ensure connection is always closed after opening
     closeConnection();
 }
 
-void ScriptClient::scanAPI(const char *route, APICallback callback)
-{
+void ScriptClient::scanAPI(const char* route, APICallback callback) {
     println("HTTP/1.1 200 OK");
     println("Content-type:text/html");
     println("Access-Control-Allow-Origin: *");
     println("Connection: close");
     println();
 
-    if (sc_data->find("favicon") != std::string::npos)
-    {
+    if (sc_data->find("favicon") != std::string::npos) {
         return;
     }
 
-    if (apiReturn == NULL) apiReturn = new APIReturn();
+    if (apiReturn == NULL) {
+        apiReturn = new APIReturn();
+    }
     apiReturn->clear();
 
-	size_t parseIndex = sc_data->find(route);
-    if (parseIndex == std::string::npos) return;
+    size_t parseIndex = sc_data->find(route);
+    if (parseIndex == std::string::npos) {
+        return;
+    }
 
     size_t endParseIndex = sc_data->find(" HTTP/", parseIndex);
-	if (endParseIndex == std::string::npos) endParseIndex = sc_data->find(" HTTPS/", parseIndex);
-    if (endParseIndex == std::string::npos || endParseIndex < parseIndex) return;
+    if (endParseIndex == std::string::npos) {
+        endParseIndex = sc_data->find(" HTTPS/", parseIndex);
+    }
+    if (endParseIndex == std::string::npos || endParseIndex < parseIndex) {
+        return;
+    }
 
-	sc_data->erase(endParseIndex);
-	parseIndex += strlen(route);
+    sc_data->erase(endParseIndex);
+    parseIndex += strlen(route);
 
-	{
-		size_t routeNameIndex = sc_data->find_first_of("?", parseIndex);
-        if (routeNameIndex == std::string::npos) routeNameIndex = sc_data->size();
+    {
+        size_t routeNameIndex = sc_data->find_first_of("?", parseIndex);
+        if (routeNameIndex == std::string::npos) {
+            routeNameIndex = sc_data->size();
+        }
 
-		apiReturn->apiName = sc_data->substr(parseIndex, routeNameIndex - parseIndex);
+        apiReturn->apiName = sc_data->substr(parseIndex, routeNameIndex - parseIndex);
 
-		parseIndex = routeNameIndex + 1;
+        parseIndex = routeNameIndex + 1;
 
-		while (parseIndex < sc_data->size() && parseIndex < endParseIndex)
-		{
-			size_t keySeparatorIndex = sc_data->find_first_of("=", parseIndex);
-			size_t paramEndIndex = sc_data->find_first_of("&", keySeparatorIndex);
-			if (keySeparatorIndex == std::string::npos) break;
-			if (paramEndIndex == std::string::npos) paramEndIndex = sc_data->size();
-			std::string key = sc_data->substr(parseIndex, keySeparatorIndex - parseIndex);
-			keySeparatorIndex++;
-			std::string param = sc_data->substr(keySeparatorIndex, paramEndIndex - keySeparatorIndex);
-			apiReturn->params[key] = param;
-			parseIndex = paramEndIndex + 1;
-		}
+        while (parseIndex < sc_data->size() && parseIndex < endParseIndex) {
+            size_t keySeparatorIndex = sc_data->find_first_of("=", parseIndex);
+            size_t paramEndIndex = sc_data->find_first_of("&", keySeparatorIndex);
+            if (keySeparatorIndex == std::string::npos) {
+                break;
+            }
 
-        //call main program API handler
+            if (paramEndIndex == std::string::npos) {
+                paramEndIndex = sc_data->size();
+            }
+            std::string key = sc_data->substr(parseIndex, keySeparatorIndex - parseIndex);
+            keySeparatorIndex++;
+            std::string param =
+                sc_data->substr(keySeparatorIndex, paramEndIndex - keySeparatorIndex);
+            apiReturn->params[key] = param;
+            parseIndex = paramEndIndex + 1;
+        }
+
+        // call main program API handler
         callback(apiReturn, this);
-	}
+    }
 }
 
-void ScriptClient::closeConnection()
-{
+void ScriptClient::closeConnection() {
     *sc_data = "";
     // Close the connection
     delay(1);

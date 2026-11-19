@@ -3,14 +3,17 @@
 #include <string>
 #include <map>
 
-class APIReturn
-{
+class APIReturn {
 public:
-    APIReturn() { }
-    void clear() { apiName = ""; params.clear(); }
+    APIReturn() {}
+
+    void clear() {
+        apiName = "";
+        params.clear();
+    }
 
     std::string apiName;
-    std::map <std::string, std::string> params;
+    std::map<std::string, std::string> params;
 };
 
 #endif

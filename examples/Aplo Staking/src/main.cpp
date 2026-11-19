@@ -8,31 +8,33 @@
 
 using std::string;
 
-extern const char *ssid;
-extern const char *password;
+extern const char* ssid;
+extern const char* password;
 
 #if defined(ESP8266)
 static WiFiEventHandler wifiDisconnectHandler;
 #endif
 
-static void initWifi()
-{
+static void initWifi() {
 #if defined(ESP8266)
-    wifiDisconnectHandler = WiFi.onStationModeDisconnected(
-        [](const WiFiEventStationModeDisconnected &event) {
+    wifiDisconnectHandler =
+        WiFi.onStationModeDisconnected([](const WiFiEventStationModeDisconnected& event) {
             Serial.print(F("WiFi disconnected, reason="));
             Serial.println(event.reason);
         });
 #endif
 }
 
-static bool connectWifiOnce(unsigned long timeoutMs)
-{
+static bool connectWifiOnce(unsigned long timeoutMs) {
     WiFi.persistent(false);
     WiFi.setAutoReconnect(true);
 #if defined(ESP8266)
     WiFi.mode(WIFI_STA);
-    WiFi.config(IPAddress(static_cast<uint32_t>(0)), IPAddress(static_cast<uint32_t>(0)), IPAddress(static_cast<uint32_t>(0)));
+    WiFi.config(
+        IPAddress(static_cast<uint32_t>(0)),
+        IPAddress(static_cast<uint32_t>(0)),
+        IPAddress(static_cast<uint32_t>(0))
+    );
     const unsigned long effectiveTimeout = timeoutMs < 45000UL ? 45000UL : timeoutMs;
 #elif defined(ESP32)
     WiFi.disconnect(true, true);
@@ -48,7 +50,11 @@ static bool connectWifiOnce(unsigned long timeoutMs)
     WiFi.begin(ssid, password);
     const unsigned long startedAt = millis();
     while (millis() - startedAt < effectiveTimeout) {
-        if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(static_cast<uint32_t>(0))) return true;
+        if (WiFi.status() == WL_CONNECTED &&
+            WiFi.localIP() != IPAddress(static_cast<uint32_t>(0))) {
+            return true;
+        }
+
         delay(250);
 #if defined(ESP8266)
         yield();
@@ -57,9 +63,10 @@ static bool connectWifiOnce(unsigned long timeoutMs)
     return false;
 }
 
-static bool connectWifi(uint8_t maxAttempts, unsigned long timeoutMs)
-{
-    if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(static_cast<uint32_t>(0))) return true;
+static bool connectWifi(uint8_t maxAttempts, unsigned long timeoutMs) {
+    if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(static_cast<uint32_t>(0))) {
+        return true;
+    }
 
     for (uint8_t attempt = 0; attempt < maxAttempts; ++attempt) {
         if (connectWifiOnce(timeoutMs)) {
@@ -67,7 +74,10 @@ static bool connectWifi(uint8_t maxAttempts, unsigned long timeoutMs)
             Serial.println(WiFi.localIP());
             return true;
         }
-        if (attempt + 1 < maxAttempts) delay(1000);
+
+        if (attempt + 1 < maxAttempts) {
+            delay(1000);
+        }
     }
 
     Serial.print(F("WiFi failed, status="));
@@ -75,8 +85,7 @@ static bool connectWifi(uint8_t maxAttempts, unsigned long timeoutMs)
     return false;
 }
 
-static void beginSerial()
-{
+static void beginSerial() {
     Serial.begin(115200);
     delay(1000);
 }
@@ -104,15 +113,15 @@ static void beginSerial()
 // ============================================================================
 
 // WiFi credentials - replace with your network details
-const char *ssid = "<YOUR_SSID>";
-const char *password = "<YOUR_WIFI_PASSWORD>";
+const char* ssid = "<YOUR_SSID>";
+const char* password = "<YOUR_WIFI_PASSWORD>";
 
 // Wallet configuration
 // SECURITY: Replace with your actual private key. The public address is derived
 // from it at runtime, so there is no separate address value to keep in sync.
 // WARNING: Keep your private key secret! Never share or commit it.
 // CRITICAL: Replace with your actual 64-character hex private key (without 0x prefix)
-const char *PRIVATE_KEY = "0000000000000000000000000000000000000000000000000000000000000000";
+const char* PRIVATE_KEY = "0000000000000000000000000000000000000000000000000000000000000000";
 string myAddress;
 
 // Staking parameters
@@ -120,15 +129,14 @@ string myAddress;
 #define STAKE_AMOUNT_APLO "1000"
 
 Web3 web3Instance;
-Web3 *web3 = &web3Instance;
+Web3* web3 = &web3Instance;
 
-void queryStakingStatus(const char *address);
-void stakeAplo(const char *aplo);
+void queryStakingStatus(const char* address);
+void stakeAplo(const char* aplo);
 void unstakeAplo();
-uint256_t queryBalance(const char *address);
+uint256_t queryBalance(const char* address);
 
-void setup()
-{
+void setup() {
     beginSerial();
     Serial.println(F("\n\n=== AploEmbed Staking Example ===\n"));
     initWifi();
@@ -164,10 +172,8 @@ void setup()
     const uint256_t gasBuffer = Util::ConvertDecimalToWei("0.01", 18);
     const uint256_t requiredBalance = stakeAmount + gasBuffer;
 
-
     // Safety check: ensure sufficient balance
-    if (balance >= requiredBalance)
-    {
+    if (balance >= requiredBalance) {
         stakeAplo(STAKE_AMOUNT_APLO);
 
         // Query staking status AFTER staking to show the change
@@ -178,9 +184,7 @@ void setup()
         // unstakeAplo();
         // Serial.println(F("\n=== Final Staking Status ===\n"));
         // queryStakingStatus(myAddress.c_str());
-    }
-    else
-    {
+    } else {
         Serial.println(F("ERROR: Insufficient balance!"));
         Serial.print(F("Required: "));
         string requiredText = Util::ConvertWeiToEthString(&requiredBalance, 18);
@@ -195,8 +199,7 @@ void setup()
     }
 }
 
-void loop()
-{
+void loop() {
     // Staking operations are done once in setup()
     // Add periodic status checks here if needed
     delay(10000);
@@ -206,8 +209,7 @@ void loop()
  * Query account balance in APLO
  * Returns balance as double for easy comparison
  */
-uint256_t queryBalance(const char *address)
-{
+uint256_t queryBalance(const char* address) {
     string addr = address;
     return web3->AploGetBalance(&addr);
 }
@@ -216,8 +218,7 @@ uint256_t queryBalance(const char *address)
  * Query current staking status for an address
  * Shows: current stake amount and mining reward multiplier
  */
-void queryStakingStatus(const char *address)
-{
+void queryStakingStatus(const char* address) {
     string addr = address;
     string stakingContract = APLO_STAKING_CONTRACT;
 
@@ -248,7 +249,6 @@ void queryStakingStatus(const char *address)
         Serial.print(multiplierInt);
         Serial.println(F("/10)"));
     }
-
 }
 
 /**
@@ -257,8 +257,7 @@ void queryStakingStatus(const char *address)
  *
  * @param aplo Amount in APLO to stake (minimum 1,000 for rewards)
  */
-void stakeAplo(const char *aplo)
-{
+void stakeAplo(const char* aplo) {
     // Convert APLO to Gaplo (wei) - 18 decimals
     uint256_t valueGaplo = Util::ConvertDecimalToWei(aplo, 18);
 
@@ -271,13 +270,10 @@ void stakeAplo(const char *aplo)
     string myAddr = myAddress;
     string txHash = web3->AploStake(&stakingContract, &valueGaplo, PRIVATE_KEY, &myAddr);
 
-    if (txHash.length() > 0 && txHash != "0x")
-    {
+    if (txHash.length() > 0 && txHash != "0x") {
         Serial.print(F("Transaction Hash: "));
         Serial.println(txHash.c_str());
-    }
-    else
-    {
+    } else {
         Serial.println(F("ERROR: Staking transaction failed!"));
     }
 
@@ -290,19 +286,15 @@ void stakeAplo(const char *aplo)
  *
  * WARNING: This unstakes ALL your APLO, not a partial amount
  */
-void unstakeAplo()
-{
+void unstakeAplo() {
     string stakingContract = APLO_STAKING_CONTRACT;
     string myAddr = myAddress;
     string txHash = web3->AploUnstake(&stakingContract, PRIVATE_KEY, &myAddr);
 
-    if (txHash.length() > 0 && txHash != "0x")
-    {
+    if (txHash.length() > 0 && txHash != "0x") {
         Serial.print(F("Transaction Hash: "));
         Serial.println(txHash.c_str());
-    }
-    else
-    {
+    } else {
         Serial.println(F("ERROR: Unstaking transaction failed!"));
     }
 }

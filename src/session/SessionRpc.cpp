@@ -10,6 +10,7 @@ bool detail::unquoteHex(const string& encoded, string& output) {
         encoded.find('\\') != string::npos) {
         return false;
     }
+
     output = encoded.substr(1, encoded.size() - 2);
     return true;
 }
@@ -19,10 +20,12 @@ SessionResult SessionKeys::Rpc(const string& method, const string& params, strin
     if (!transport_) {
         return {SessionError::TransportError, "no RPC transport"};
     }
+
     const string response = transport_(method, params, context_);
     if (response.empty()) {
         return {SessionError::TransportError, "empty RPC response"};
     }
+
     JsonRpcParser parser;
     for (char character : response) {
         parser.Push(character);
@@ -34,6 +37,7 @@ SessionResult SessionKeys::Rpc(const string& method, const string& params, strin
         const auto range = parser.ErrorRange();
         return {SessionError::RpcError, response.substr(range.begin, range.end - range.begin)};
     }
+
     case JsonRpcParser::Outcome::Result: {
         const auto range = parser.ResultRange();
         result = response.substr(range.begin, range.end - range.begin);
@@ -49,9 +53,11 @@ bool detail::parseQuantity(const string& raw, uint256_t& value) {
         encoded.substr(0, 2) != "0x") {
         return false;
     }
+
     if (encoded.size() > 3 && encoded[2] == '0') {
         return false;
     }
+
     for (size_t i = 2; i < encoded.size(); ++i) {
         if (hexDigit(encoded[i]) < 0) {
             return false;
@@ -68,9 +74,11 @@ SessionResult SessionKeys::Quantity(const string& method, const string& params, 
     if (!result) {
         return result;
     }
+
     if (!parseQuantity(raw, value)) {
         return {SessionError::InvalidResponse, "invalid uint256 RPC quantity"};
     }
+
     return {};
 }
 
@@ -78,8 +86,13 @@ SessionResult SessionKeys::Request(const string& method, const string& params, s
     return Rpc(method, params, result);
 }
 
-SessionResult SessionKeys::Call(const string& from, const string& to, const string& data,
-                                string& output, const string& blockTag) {
+SessionResult SessionKeys::Call(
+    const string& from,
+    const string& to,
+    const string& data,
+    string& output,
+    const string& blockTag
+) {
     output.clear();
     bool tag = blockTag == "latest" || blockTag == "pending" || blockTag == "earliest" ||
                blockTag == "safe" || blockTag == "finalized";
@@ -88,33 +101,45 @@ SessionResult SessionKeys::Call(const string& from, const string& to, const stri
     if (!isAddress(from) || !isAddress(to) || !isHex(data) || !tag) {
         return invalidArgument("invalid eth_call argument");
     }
+
     string raw;
-    auto result = Rpc("eth_call",
-                      "[{\"from\":\"" + from + "\",\"to\":\"" + to + "\",\"data\":\"" + data +
-                          "\"},\"" + blockTag + "\"]",
-                      raw);
+    auto result =
+        Rpc("eth_call",
+            "[{\"from\":\"" + from + "\",\"to\":\"" + to + "\",\"data\":\"" + data + "\"},\"" +
+                blockTag + "\"]",
+            raw);
     if (!result) {
         return result;
     }
+
     string parsed;
     if (!unquoteHex(raw, parsed) || !isHex(parsed)) {
         return {SessionError::InvalidResponse, "invalid eth_call result"};
     }
+
     output = parsed;
     return {};
 }
 
-SessionResult SessionKeys::EstimateGas(const string& from, const string& to, const string& data,
-                                       const uint256_t& value, uint64_t& gas) {
+SessionResult SessionKeys::EstimateGas(
+    const string& from,
+    const string& to,
+    const string& data,
+    const uint256_t& value,
+    uint64_t& gas
+) {
     gas = 0;
     if (!isAddress(from) || !isAddress(to) || !isHex(data)) {
         return invalidArgument("invalid estimateGas argument");
     }
+
     uint256_t estimated;
-    auto result = Quantity("eth_estimateGas",
-                           "[{\"from\":\"" + from + "\",\"to\":\"" + to + "\",\"data\":\"" + data +
-                               "\",\"value\":\"0x" + value.str(16) + "\"}]",
-                           estimated);
+    auto result = Quantity(
+        "eth_estimateGas",
+        "[{\"from\":\"" + from + "\",\"to\":\"" + to + "\",\"data\":\"" + data +
+            "\",\"value\":\"0x" + value.str(16) + "\"}]",
+        estimated
+    );
     return checkedUint64(result, estimated, gas);
 }
 
@@ -123,6 +148,7 @@ SessionResult SessionKeys::Balance(const string& account, uint256_t& balance) {
     if (!isAddress(account)) {
         return invalidArgument("invalid balance address");
     }
+
     return Quantity("eth_getBalance", "[\"" + account + "\",\"latest\"]", balance);
 }
 
@@ -134,15 +160,17 @@ SessionResult SessionKeys::GasPrice(uint256_t& gas) {
     return Quantity("eth_gasPrice", "[]", gas);
 }
 
-SessionResult detail::checkedUint64(SessionResult result, const uint256_t& value,
-                                    uint64_t& output) {
+SessionResult
+detail::checkedUint64(SessionResult result, const uint256_t& value, uint64_t& output) {
     output = 0;
     if (!result) {
         return result;
     }
+
     if (value > uint256_t(UINT64_MAX)) {
         return {SessionError::InvalidResponse, "quantity exceeds uint64"};
     }
+
     output = static_cast<uint64_t>(value);
     return {};
 }
@@ -158,6 +186,7 @@ SessionResult SessionKeys::PendingNonce(const string& signerAddress, uint64_t& n
     if (!isAddress(signerAddress)) {
         return invalidArgument("invalid signer address");
     }
+
     uint256_t value;
     auto result =
         Quantity("eth_getTransactionCount", "[\"" + signerAddress + "\",\"pending\"]", value);
@@ -169,15 +198,18 @@ SessionResult SessionKeys::SendRaw(const string& raw, string& hash) {
     if (!isHex(raw) || raw.size() < 4) {
         return invalidArgument("invalid raw transaction");
     }
+
     string value;
     auto result = Rpc("eth_sendRawTransaction", "[\"" + raw + "\"]", value);
     if (!result) {
         return result;
     }
+
     string parsed;
     if (!unquoteHex(value, parsed) || !isHex(parsed, 32)) {
         return {SessionError::InvalidResponse, "invalid transaction hash"};
     }
+
     hash = parsed;
     return {};
 }
@@ -187,11 +219,13 @@ SessionResult SessionKeys::Receipt(const string& hash, ReceiptState& state) {
     if (!isHex(hash, 32)) {
         return invalidArgument("invalid transaction hash");
     }
+
     string raw;
     auto result = Rpc("eth_getTransactionReceipt", "[\"" + hash + "\"]", raw);
     if (!result) {
         return result;
     }
+
     // Use the same direct-status rules as oversized ESP8266 receipts. Feeding a
     // synthetic envelope avoids a second JSON grammar or copying the raw value.
     JsonRpcParser parser;
@@ -217,6 +251,7 @@ SessionResult SessionKeys::Receipt(const string& hash, ReceiptState& state) {
     case JsonRpcParser::Receipt::Invalid:
         return {SessionError::InvalidResponse, "invalid receipt status"};
     }
+
     return {SessionError::InvalidResponse, "invalid receipt"};
 }
 } // namespace aplo

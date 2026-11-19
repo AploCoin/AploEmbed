@@ -15,12 +15,15 @@ inline int hexDigit(char character) {
     if (character >= '0' && character <= '9') {
         return character - '0';
     }
+
     if (character >= 'a' && character <= 'f') {
         return character - 'a' + 10;
     }
+
     if (character >= 'A' && character <= 'F') {
         return character - 'A' + 10;
     }
+
     return -1;
 }
 
@@ -28,9 +31,11 @@ inline bool isHex(const string& value, size_t expectedBytes = 0) {
     if (value.size() < 2 || value[0] != '0' || value[1] != 'x' || (value.size() & 1)) {
         return false;
     }
+
     if (expectedBytes && value.size() != 2 + 2 * expectedBytes) {
         return false;
     }
+
     for (size_t i = 2; i < value.size(); ++i) {
         if (hexDigit(value[i]) < 0) {
             return false;

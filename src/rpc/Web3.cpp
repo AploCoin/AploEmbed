@@ -38,24 +38,26 @@ using std::vector;
 // constructor. The singleton is first constructed by initWeb3(); using a
 // function-local static avoids cross-translation-unit initialization order
 // hazards when applications create a global Web3 before setup().
-static WiFiClientSecure& getEsp8266Client()
-{
+static WiFiClientSecure& getEsp8266Client() {
     static WiFiClientSecure transport;
     return transport;
 }
 
-static bool esp8266DeadlineReached(unsigned long deadline)
-{
+static bool esp8266DeadlineReached(unsigned long deadline) {
     return deadline == 0 || static_cast<long>(millis() - deadline) >= 0;
 }
 
-static bool ensureEsp8266X509Time()
-{
+static bool ensureEsp8266X509Time() {
     static bool configured = false;
     static unsigned long retryAfterMs = 0;
 
-    if (time(nullptr) >= APLO_VALID_X509_EPOCH) return true;
-    if (!esp8266DeadlineReached(retryAfterMs)) return false;
+    if (time(nullptr) >= APLO_VALID_X509_EPOCH) {
+        return true;
+    }
+
+    if (!esp8266DeadlineReached(retryAfterMs)) {
+        return false;
+    }
 
     if (!configured) {
         configTime(0, 0, "pool.ntp.org", "time.nist.gov");
@@ -63,25 +65,30 @@ static bool ensureEsp8266X509Time()
     }
 
     const unsigned long startedAt = millis();
-    while (time(nullptr) < APLO_VALID_X509_EPOCH &&
-           millis() - startedAt < APLO_X509_TIME_WAIT_MS) {
+    while (time(nullptr) < APLO_VALID_X509_EPOCH && millis() - startedAt < APLO_X509_TIME_WAIT_MS) {
         delay(250);
         yield();
     }
 
-    if (time(nullptr) >= APLO_VALID_X509_EPOCH) return true;
+    if (time(nullptr) >= APLO_VALID_X509_EPOCH) {
+        return true;
+    }
+
     retryAfterMs = millis() + APLO_X509_TIME_RETRY_MS;
     Serial.println(F("TLS paused: unable to synchronize certificate time"));
     return false;
 }
 #endif
 
-
 static string getJsonResultValue(const string* json) {
-    if (json == nullptr) return string("");
+    if (json == nullptr) {
+        return string("");
+    }
+
     TagReader reader;
     return reader.getTag(json, "result");
 }
+
 void Web3::initWeb3(const char* primaryRpc, const char* fallbackRpc) {
 #if defined(ESP8266)
     client = &getEsp8266Client();
@@ -89,7 +96,7 @@ void Web3::initWeb3(const char* primaryRpc, const char* fallbackRpc) {
     client = nullptr;
 #endif
     host = nullptr;
-    chainId = APLO_ID;  // Fixed to AploCoin chain ID (28282)
+    chainId = APLO_ID; // Fixed to AploCoin chain ID (28282)
 
     certMode = CERT_PROFILE;
     caCert = nullptr;
@@ -271,7 +278,7 @@ void Web3::EthAccounts(char** array, int size) {
     // eth_accounts is deprecated in modern Ethereum clients
     // For AploCoin embedded use, accounts are managed locally via private keys
     // This method is kept for API compatibility but returns empty
-    (void)array;  // Suppress unused parameter warning
+    (void)array; // Suppress unused parameter warning
     (void)size;
 }
 
@@ -291,8 +298,7 @@ uint256_t Web3::EthGetBalance(const string* address) {
     return getUint256(&output);
 }
 
-string Web3::EthViewCall(const string* data, const char* to)
-{
+string Web3::EthViewCall(const string* data, const char* to) {
     string m = "eth_call";
     string p = "[{\"data\":\"";
     p += data->c_str();
@@ -305,14 +311,17 @@ string Web3::EthViewCall(const string* data, const char* to)
 
 int Web3::EthGetTransactionCount(const string* address) {
     string m = "eth_getTransactionCount";
-    string p = "[\"" + *address + "\",\"pending\"]"; //in case we need to push several transactions in a row
+    string p = "[\"" + *address +
+               "\",\"pending\"]"; // in case we need to push several transactions in a row
     string input = generateJson(&m, &p);
     string output = execWithFailover(&input);
     return getInt(&output);
 }
 
 static size_t findJsonObjectEnd(const string& json, size_t objectStart) {
-    if (objectStart >= json.size() || json[objectStart] != '{') return string::npos;
+    if (objectStart >= json.size() || json[objectStart] != '{') {
+        return string::npos;
+    }
 
     unsigned depth = 0;
     bool inString = false;
@@ -320,20 +329,32 @@ static size_t findJsonObjectEnd(const string& json, size_t objectStart) {
     for (size_t i = objectStart; i < json.size(); ++i) {
         const char c = json[i];
         if (inString) {
-            if (escaped) escaped = false;
-            else if (c == '\\') escaped = true;
-            else if (c == '"') inString = false;
+            if (escaped) {
+                escaped = false;
+            } else if (c == '\\') {
+                escaped = true;
+            } else if (c == '"') {
+                inString = false;
+            }
             continue;
         }
-        if (c == '"') inString = true;
-        else if (c == '{') ++depth;
-        else if (c == '}' && --depth == 0) return i;
+
+        if (c == '"') {
+            inString = true;
+        } else if (c == '{') {
+            ++depth;
+        } else if (c == '}' && --depth == 0) {
+            return i;
+        }
     }
     return string::npos;
 }
 
-static size_t findDirectJsonObjectKey(const string& json, size_t objectStart, size_t objectEnd, const char* key) {
-    if (key == nullptr || objectStart >= objectEnd || objectEnd >= json.size()) return string::npos;
+static size_t
+findDirectJsonObjectKey(const string& json, size_t objectStart, size_t objectEnd, const char* key) {
+    if (key == nullptr || objectStart >= objectEnd || objectEnd >= json.size()) {
+        return string::npos;
+    }
 
     unsigned depth = 1;
     for (size_t i = objectStart + 1; i < objectEnd;) {
@@ -343,11 +364,15 @@ static size_t findDirectJsonObjectKey(const string& json, size_t objectStart, si
             ++i;
             continue;
         }
+
         if (c == '}' || c == ']') {
-            if (depth > 0) --depth;
+            if (depth > 0) {
+                --depth;
+            }
             ++i;
             continue;
         }
+
         if (c != '"') {
             ++i;
             continue;
@@ -357,16 +382,24 @@ static size_t findDirectJsonObjectKey(const string& json, size_t objectStart, si
         bool escaped = false;
         ++i;
         while (i < objectEnd) {
-            if (escaped) escaped = false;
-            else if (json[i] == '\\') escaped = true;
-            else if (json[i] == '"') break;
+            if (escaped) {
+                escaped = false;
+            } else if (json[i] == '\\') {
+                escaped = true;
+            } else if (json[i] == '"') {
+                break;
+            }
             ++i;
         }
-        if (i >= objectEnd) return string::npos;
+        if (i >= objectEnd) {
+            return string::npos;
+        }
 
         if (depth == 1 && json.compare(stringStart, i - stringStart, key) == 0) {
             size_t separator = json.find_first_not_of(" \r\n\t", i + 1);
-            if (separator < objectEnd && json[separator] == ':') return stringStart - 1;
+            if (separator < objectEnd && json[separator] == ':') {
+                return stringStart - 1;
+            }
         }
         ++i;
     }
@@ -374,7 +407,9 @@ static size_t findDirectJsonObjectKey(const string& json, size_t objectStart, si
 }
 
 int Web3::EthGetTransactionReceiptStatus(const string* transactionHash) {
-    if (transactionHash == nullptr || transactionHash->empty()) return -1;
+    if (transactionHash == nullptr || transactionHash->empty()) {
+        return -1;
+    }
 
     string normalizedHash = *transactionHash;
     if (normalizedHash.rfind("0x", 0) != 0 && normalizedHash.rfind("0X", 0) != 0) {
@@ -385,43 +420,81 @@ int Web3::EthGetTransactionReceiptStatus(const string* transactionHash) {
     string p = "[\"" + normalizedHash + "\"]";
     string input = generateJson(&m, &p);
     string output = execWithFailover(&input);
-    if (output.empty()) return -1;
+    if (output.empty()) {
+        return -1;
+    }
 
     const size_t errorPos = output.find("\"error\"");
-    if (errorPos != string::npos) return -1;
+    if (errorPos != string::npos) {
+        return -1;
+    }
 
     const size_t resultKeyPos = output.find("\"result\"");
-    if (resultKeyPos == string::npos) return -1;
+    if (resultKeyPos == string::npos) {
+        return -1;
+    }
+
     const size_t resultColonPos = output.find(':', resultKeyPos + 8);
-    if (resultColonPos == string::npos) return -1;
+    if (resultColonPos == string::npos) {
+        return -1;
+    }
+
     const size_t resultObjectPos = output.find_first_not_of(" \r\n\t", resultColonPos + 1);
-    if (resultObjectPos == string::npos || output[resultObjectPos] != '{') return -1;
+    if (resultObjectPos == string::npos || output[resultObjectPos] != '{') {
+        return -1;
+    }
 
     const size_t resultObjectEnd = findJsonObjectEnd(output, resultObjectPos);
-    if (resultObjectEnd == string::npos) return -1;
+    if (resultObjectEnd == string::npos) {
+        return -1;
+    }
 
-    const size_t statusPos = findDirectJsonObjectKey(output, resultObjectPos, resultObjectEnd, "status");
-    if (statusPos == string::npos || statusPos > resultObjectEnd) return -1;
+    const size_t statusPos =
+        findDirectJsonObjectKey(output, resultObjectPos, resultObjectEnd, "status");
+    if (statusPos == string::npos || statusPos > resultObjectEnd) {
+        return -1;
+    }
+
     const size_t statusValuePos = output.find(':', statusPos + 8);
-    if (statusValuePos == string::npos || statusValuePos > resultObjectEnd) return -1;
+    if (statusValuePos == string::npos || statusValuePos > resultObjectEnd) {
+        return -1;
+    }
+
     const size_t statusQuotePos = output.find_first_not_of(" \r\n\t", statusValuePos + 1);
-    if (statusQuotePos == string::npos || statusQuotePos > resultObjectEnd || output[statusQuotePos] != '"') return -1;
+    if (statusQuotePos == string::npos || statusQuotePos > resultObjectEnd ||
+        output[statusQuotePos] != '"') {
+        return -1;
+    }
+
     const size_t statusEndPos = output.find('"', statusQuotePos + 1);
-    if (statusEndPos == string::npos || statusEndPos > resultObjectEnd) return -1;
+    if (statusEndPos == string::npos || statusEndPos > resultObjectEnd) {
+        return -1;
+    }
 
     const string status = output.substr(statusQuotePos + 1, statusEndPos - statusQuotePos - 1);
-    if (status == "0x1" || status == "1") return 1;
-    if (status == "0x0" || status == "0") return 0;
+    if (status == "0x1" || status == "1") {
+        return 1;
+    }
+
+    if (status == "0x0" || status == "0") {
+        return 0;
+    }
+
     return -1;
 }
 
-string Web3::EthCall(const string* from, const char* to, long gas, long gasPrice,
-                     const string* value, const string* data) {
+string Web3::EthCall(
+    const string* from,
+    const char* to,
+    long gas,
+    long gasPrice,
+    const string* value,
+    const string* data
+) {
     // Build eth_call with optional gas, gasPrice, and value parameters
     string m = "eth_call";
-    string p = "[{\"from\":\"" + *from + "\",\"to\":\""
-               + *to + "\",\"data\":\"" + *data + "\"";
-    
+    string p = "[{\"from\":\"" + *from + "\",\"to\":\"" + *to + "\",\"data\":\"" + *data + "\"";
+
     // Add gas if specified (non-zero)
     if (gas > 0) {
         char gasHex[32];
@@ -430,7 +503,7 @@ string Web3::EthCall(const string* from, const char* to, long gas, long gasPrice
         p += gasHex;
         p += "\"";
     }
-    
+
     // Add gasPrice if specified (non-zero)
     if (gasPrice > 0) {
         char gasPriceHex[32];
@@ -439,12 +512,12 @@ string Web3::EthCall(const string* from, const char* to, long gas, long gasPrice
         p += gasPriceHex;
         p += "\"";
     }
-    
+
     // Add value if specified (non-empty and non-zero)
     if (value != nullptr && !value->empty() && *value != "0" && *value != "0x0") {
         p += ",\"value\":\"" + *value + "\"";
     }
-    
+
     p += "}, \"latest\"]";
     string input = generateJson(&m, &p);
     return execWithFailover(&input);
@@ -452,7 +525,10 @@ string Web3::EthCall(const string* from, const char* to, long gas, long gasPrice
 
 string Web3::EthSendSignedTransaction(const string* data, const uint32_t dataLen) {
     (void)dataLen;
-    if (data == nullptr || data->empty()) return "";
+    if (data == nullptr || data->empty()) {
+        return "";
+    }
+
     string input;
     input.reserve(data->size() + 80);
     input = "{\"jsonrpc\":\"2.0\",\"method\":\"eth_sendRawTransaction\",\"params\":[\"";
@@ -469,7 +545,8 @@ string Web3::EthSendSignedTransaction(const string* data, const uint32_t dataLen
 // Private
 
 string Web3::generateJson(const string* method, const string* params) {
-    return "{\"jsonrpc\":\"2.0\",\"method\":\"" + *method + "\",\"params\":" + *params + ",\"id\":0}";
+    return "{\"jsonrpc\":\"2.0\",\"method\":\"" + *method + "\",\"params\":" + *params +
+           ",\"id\":0}";
 }
 
 string Web3::exec(const string* data, RpcEndpoint& endpoint) {
@@ -592,10 +669,12 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
             delay(1);
             continue;
         }
+
         const int next = client->read();
         if (next < 0) {
             continue;
         }
+
         const char current = static_cast<char>(next);
         ++headerBytes;
         headerState = ((headerState << 8) | static_cast<uint8_t>(current)) & 0xffffffffUL;
@@ -622,6 +701,7 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
             if (next < 0) {
                 break;
             }
+
             const char c = static_cast<char>(next);
 #if defined(ESP8266)
             response.Push(c);
@@ -633,6 +713,7 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
         if (millis() > deadline) {
             break;
         }
+
         delay(1);
     }
     client->stop();
@@ -643,6 +724,7 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
         Serial.println("HTTP response exceeds ESP8266 buffer");
         return "";
     }
+
     endpoint.retryAfterMs = 0;
     return response.Finish();
 #else
@@ -650,8 +732,7 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
 #endif
 }
 
-static bool normalizeRpcHex(string *value)
-{
+static bool normalizeRpcHex(string* value) {
     if (value == nullptr || value->empty()) {
         return false;
     }
@@ -675,78 +756,101 @@ static bool normalizeRpcHex(string *value)
 
 int Web3::getInt(const string* json) {
     string parseVal = getJsonResultValue(json);
-    if (!normalizeRpcHex(&parseVal)) return 0;
+    if (!normalizeRpcHex(&parseVal)) {
+        return 0;
+    }
+
     return strtol(parseVal.c_str(), nullptr, 16);
 }
 
 long Web3::getLong(const string* json) {
     string parseVal = getJsonResultValue(json);
-    if (!normalizeRpcHex(&parseVal)) return 0;
+    if (!normalizeRpcHex(&parseVal)) {
+        return 0;
+    }
+
     return strtol(parseVal.c_str(), nullptr, 16);
 }
 
 long long int Web3::getLongLong(const string* json) {
     string parseVal = getJsonResultValue(json);
-    if (!normalizeRpcHex(&parseVal)) return 0;
+    if (!normalizeRpcHex(&parseVal)) {
+        return 0;
+    }
+
     return strtoll(parseVal.c_str(), nullptr, 16);
 }
 
 uint256_t Web3::getUint256(const string* json) {
     string parseVal = getJsonResultValue(json);
-    if (!normalizeRpcHex(&parseVal)) return uint256_t(0);
+    if (!normalizeRpcHex(&parseVal)) {
+        return uint256_t(0);
+    }
+
     parseVal = "0x" + parseVal;
     return uint256_t(parseVal.c_str());
 }
 
 double Web3::getDouble(const string* json) {
     string parseVal = getJsonResultValue(json);
-    if (parseVal.empty()) return 0.0;
+    if (parseVal.empty()) {
+        return 0.0;
+    }
+
     return strtof(parseVal.c_str(), nullptr);
 }
 
 bool Web3::getBool(const string* json) {
     string parseVal = getJsonResultValue(json);
-    if (parseVal == "true") return true;
-    if (parseVal == "false") return false;
-    if (!normalizeRpcHex(&parseVal)) return false;
+    if (parseVal == "true") {
+        return true;
+    }
+
+    if (parseVal == "false") {
+        return false;
+    }
+
+    if (!normalizeRpcHex(&parseVal)) {
+        return false;
+    }
+
     long v = strtol(parseVal.c_str(), nullptr, 16);
     return v > 0;
 }
 
 string Web3::getResult(const string* json) {
     string res = getJsonResultValue(json);
-    if (res.length() == 0)
-    {
+    if (res.length() == 0) {
         return string("");
     }
 
-    if (res.length() > 0 && res.at(0) == 'x') res = res.substr(1);
-    else if (res.length() > 1 && res.at(1) == 'x') res = res.substr(2);
+    if (res.length() > 0 && res.at(0) == 'x') {
+        res = res.substr(1);
+    } else if (res.length() > 1 && res.at(1) == 'x') {
+        res = res.substr(2);
+    }
     return res;
 }
 
-//Currently only works for string return eg: function name() returns (string)
-string Web3::getString(const string *json)
-{
+// Currently only works for string return eg: function name() returns (string)
+string Web3::getString(const string* json) {
     string parseVal = getJsonResultValue(json);
-    if (parseVal.length() == 0)
-    {
+    if (parseVal.length() == 0) {
         return string("");
     }
 
-    vector<string> *v = Util::ConvertStringHexToABIArray(&parseVal);
+    vector<string>* v = Util::ConvertStringHexToABIArray(&parseVal);
     if (v == nullptr || v->size() < 2) {
         delete v;
         return string("");
     }
-    
+
     uint256_t length = uint256_t(v->at(1));
     uint32_t lengthIndex = length;
 
     string asciiHex;
     int index = 2;
-    while (lengthIndex > 0 && index < static_cast<int>(v->size()))
-    {
+    while (lengthIndex > 0 && index < static_cast<int>(v->size())) {
         asciiHex += v->at(index++);
         if (lengthIndex <= 32) {
             lengthIndex = 0;
@@ -755,9 +859,10 @@ string Web3::getString(const string *json)
         }
     }
 
-    //convert ascii into string
+    // convert ascii into string
     uint32_t stringHexLength = static_cast<uint32_t>(length) * 2;
-    string text = Util::ConvertHexToASCII(asciiHex.substr(0, stringHexLength).c_str(), stringHexLength);
+    string text =
+        Util::ConvertHexToASCII(asciiHex.substr(0, stringHexLength).c_str(), stringHexLength);
     delete v;
 
     return text;
@@ -832,13 +937,12 @@ bool Web3::setupCert(const RpcEndpoint& endpoint) {
     return false;
 }
 
-static bool parsePort(const string& text, unsigned short *port)
-{
+static bool parsePort(const string& text, unsigned short* port) {
     if (!port || text.empty() || text.find_first_not_of("0123456789") != string::npos) {
         return false;
     }
 
-    char *end = nullptr;
+    char* end = nullptr;
     const unsigned long portValue = strtoul(text.c_str(), &end, 10);
     if (end == text.c_str() || *end != '\0' || portValue == 0 || portValue > 65535UL) {
         return false;
@@ -853,9 +957,10 @@ bool Web3::isHttpsUrl(const char* url) {
     return parseEndpoint(url, &endpoint, true);
 }
 
-bool Web3::parseEndpoint(const char* url, RpcEndpoint* endpoint, bool requireHttps)
-{
-    if (endpoint == nullptr) return false;
+bool Web3::parseEndpoint(const char* url, RpcEndpoint* endpoint, bool requireHttps) {
+    if (endpoint == nullptr) {
+        return false;
+    }
     *endpoint = RpcEndpoint();
     std::string node = (url != nullptr) ? url : "";
 
@@ -894,13 +999,16 @@ bool Web3::parseEndpoint(const char* url, RpcEndpoint* endpoint, bool requireHtt
         if (!parsePort(portText, &endpoint->port)) {
             return false;
         }
+
         authority = authority.substr(0, colonPos);
     }
 
-    if (authority.empty() || authority.find_first_not_of(
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-.") != string::npos) {
+    constexpr const char* hostnameCharacters =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-.";
+    if (authority.empty() || authority.find_first_not_of(hostnameCharacters) != string::npos) {
         return false;
     }
+
     for (unsigned char c : endpoint->path) {
         if (c <= 32 || c == 127 || c == '#') {
             return false;
@@ -915,7 +1023,6 @@ bool Web3::parseEndpoint(const char* url, RpcEndpoint* endpoint, bool requireHtt
     endpoint->valid = !endpoint->host.empty();
     return endpoint->valid;
 }
-
 
 long long Web3::getChainId() const {
     return chainId;
@@ -988,68 +1095,67 @@ string Web3::AploGetBalanceInAplo(const string* address) {
 // AploCoin Staking Operations
 // -------------------------------
 
-string Web3::AploStake(const string* stakingContract, const uint256_t* amount, const char* privateKey, const string* fromAddress) {
+string Web3::AploStake(
+    const string* stakingContract,
+    const uint256_t* amount,
+    const char* privateKey,
+    const string* fromAddress
+) {
     // Create contract instance
     Contract contract(this, stakingContract->c_str());
     contract.SetPrivateKey(privateKey);
-    
+
     // Build function call data: stake(uint256)
     string functionData = contract.SetupContractData("stake(uint256)", amount);
-    
+
     // Get current nonce
     uint32_t nonce = (uint32_t)EthGetTransactionCount(fromAddress);
-    
+
     // Get current gas price
     unsigned long long gasPrice = (unsigned long long)EthGasPrice();
-    
+
     // Gas limit for staking (30k actual + buffer)
     uint32_t gasLimit = 100000;
-    
+
     // The Aplo staking contract follows the web miner ABI: stake(uint256) is
     // nonpayable, so the amount is an ABI argument, not msg.value.
     uint256_t zeroValue = 0;
     string contractAddr = *stakingContract;
-    string txHash = contract.SendTransaction(
-        nonce,
-        gasPrice,
-        gasLimit,
-        &contractAddr,
-        &zeroValue,
-        &functionData
-    );
-    
+    string txHash =
+        contract
+            .SendTransaction(nonce, gasPrice, gasLimit, &contractAddr, &zeroValue, &functionData);
+
     return txHash;
 }
 
-string Web3::AploUnstake(const string* stakingContract, const char* privateKey, const string* fromAddress) {
+string Web3::AploUnstake(
+    const string* stakingContract,
+    const char* privateKey,
+    const string* fromAddress
+) {
     // Create contract instance
     Contract contract(this, stakingContract->c_str());
     contract.SetPrivateKey(privateKey);
-    
+
     // Build function call data: unstake()
     string functionData = contract.SetupContractData("unstake()");
-    
+
     // Get current nonce
     uint32_t nonce = (uint32_t)EthGetTransactionCount(fromAddress);
-    
+
     // Get current gas price
     unsigned long long gasPrice = (unsigned long long)EthGasPrice();
-    
+
     // Gas limit for unstaking (30k actual + buffer)
     uint32_t gasLimit = 100000;
-    
+
     // Send transaction with zero value (unstake returns APLO to sender)
     uint256_t zeroValue = 0;
     string contractAddr = *stakingContract;
-    string txHash = contract.SendTransaction(
-        nonce,
-        gasPrice,
-        gasLimit,
-        &contractAddr,
-        &zeroValue,
-        &functionData
-    );
-    
+    string txHash =
+        contract
+            .SendTransaction(nonce, gasPrice, gasLimit, &contractAddr, &zeroValue, &functionData);
+
     return txHash;
 }
 
