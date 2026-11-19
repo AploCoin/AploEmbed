@@ -8,8 +8,8 @@ bool SessionPlatformRandom(uint8_t* bytes, size_t length) {
 }
 
 #if APLO_ENABLE_HTTPS
-static std::string web3Transport(const std::string& method, const std::string& params,
-                                 void* context) {
+static std::string
+web3Transport(const std::string& method, const std::string& params, void* context) {
     return static_cast<Web3*>(context)->RpcRequest(method, params);
 }
 

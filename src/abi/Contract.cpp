@@ -17,21 +17,23 @@ using std::string;
 using std::vector;
 #define SIGNATURE_LENGTH 64
 
-static bool isSizedUintType(const string& type, unsigned *bits)
-{
+static bool isSizedUintType(const string& type, unsigned* bits) {
     if (type == "uint") {
         *bits = 256;
         return true;
     }
+
     if (type.rfind("uint", 0) != 0 || type.find("[]") != string::npos) {
         return false;
     }
-    const char *digits = type.c_str() + 4;
+
+    const char* digits = type.c_str() + 4;
     if (*digits == '\0') {
         *bits = 256;
         return true;
     }
-    char *end = nullptr;
+
+    char* end = nullptr;
     unsigned long parsed = strtoul(digits, &end, 10);
     if (end == digits || *end != '\0' || parsed == 0 || parsed > 256 || (parsed % 8) != 0) {
         return false;
@@ -40,13 +42,13 @@ static bool isSizedUintType(const string& type, unsigned *bits)
     return true;
 }
 
-static bool isFixedBytesType(const string& type, unsigned *bytes)
-{
+static bool isFixedBytesType(const string& type, unsigned* bytes) {
     if (type.rfind("bytes", 0) != 0 || type == "bytes" || type.find("[]") != string::npos) {
         return false;
     }
-    const char *digits = type.c_str() + 5;
-    char *end = nullptr;
+
+    const char* digits = type.c_str() + 5;
+    char* end = nullptr;
     unsigned long parsed = strtoul(digits, &end, 10);
     if (end == digits || *end != '\0' || parsed == 0 || parsed > 32) {
         return false;
@@ -55,8 +57,7 @@ static bool isFixedBytesType(const string& type, unsigned *bytes)
     return true;
 }
 
-static size_t rlpLengthByteCount(size_t value)
-{
+static size_t rlpLengthByteCount(size_t value) {
     size_t bytes = 0;
     do {
         ++bytes;
@@ -65,35 +66,39 @@ static size_t rlpLengthByteCount(size_t value)
     return bytes;
 }
 
-static size_t rlpItemSize(const uint8_t *input, size_t inputLen)
-{
-    if (inputLen == 1 && input[0] < 0x80) return 1;
-    if (inputLen <= 55) return 1 + inputLen;
+static size_t rlpItemSize(const uint8_t* input, size_t inputLen) {
+    if (inputLen == 1 && input[0] < 0x80) {
+        return 1;
+    }
+
+    if (inputLen <= 55) {
+        return 1 + inputLen;
+    }
+
     return 1 + rlpLengthByteCount(inputLen) + inputLen;
 }
 
-static size_t rlpListHeaderSize(size_t payloadSize)
-{
+static size_t rlpListHeaderSize(size_t payloadSize) {
     return payloadSize < 55 ? 1 : 1 + rlpLengthByteCount(payloadSize);
 }
 
-static void appendBigEndianLength(vector<uint8_t>& output, size_t value, size_t byteCount)
-{
+static void appendBigEndianLength(vector<uint8_t>& output, size_t value, size_t byteCount) {
     for (size_t i = byteCount; i > 0; --i) {
         output.push_back(static_cast<uint8_t>(value >> ((i - 1) * 8)));
     }
 }
 
-static void appendRlpItem(vector<uint8_t>& output, const uint8_t *input, size_t inputLen)
-{
+static void appendRlpItem(vector<uint8_t>& output, const uint8_t* input, size_t inputLen) {
     if (inputLen == 1 && input[0] == 0) {
         output.push_back(0x80);
         return;
     }
+
     if (inputLen == 1 && input[0] < 0x80) {
         output.push_back(input[0]);
         return;
     }
+
     if (inputLen <= 55) {
         output.push_back(static_cast<uint8_t>(0x80 + inputLen));
     } else {
@@ -101,20 +106,21 @@ static void appendRlpItem(vector<uint8_t>& output, const uint8_t *input, size_t 
         output.push_back(static_cast<uint8_t>(0xb7 + lengthBytes));
         appendBigEndianLength(output, inputLen, lengthBytes);
     }
-    if (inputLen > 0) output.insert(output.end(), input, input + inputLen);
+    if (inputLen > 0) {
+        output.insert(output.end(), input, input + inputLen);
+    }
 }
 
-static void appendRlpItem(vector<uint8_t>& output, const vector<uint8_t>& input)
-{
+static void appendRlpItem(vector<uint8_t>& output, const vector<uint8_t>& input) {
     appendRlpItem(output, input.data(), input.size());
 }
 
-static void appendRlpListHeader(vector<uint8_t>& output, size_t payloadSize)
-{
+static void appendRlpListHeader(vector<uint8_t>& output, size_t payloadSize) {
     if (payloadSize < 55) {
         output.push_back(static_cast<uint8_t>(0xc0 + payloadSize));
         return;
     }
+
     const size_t lengthBytes = rlpLengthByteCount(payloadSize);
     output.push_back(static_cast<uint8_t>(0xf7 + lengthBytes));
     appendBigEndianLength(output, payloadSize, lengthBytes);
@@ -127,10 +133,10 @@ static void appendRlpListHeader(vector<uint8_t>& output, size_t payloadSize)
 Contract::Contract(Web3* _web3, const char* address) {
     web3 = _web3;
     contractAddress = address;
-    options.gas=0;
-    strcpy(options.from,"");
-    strcpy(options.to,"");
-    strcpy(options.gasPrice,"0");
+    options.gas = 0;
+    strcpy(options.from, "");
+    strcpy(options.to, "");
+    strcpy(options.gasPrice, "0");
     crypto = NULL;
     ownsWeb3 = false;
 }
@@ -152,14 +158,13 @@ Contract::~Contract() {
 #endif
 }
 
-void Contract::SetPrivateKey(const char *key) {
+void Contract::SetPrivateKey(const char* key) {
     delete crypto;
     crypto = new Crypto(web3);
     crypto->SetPrivateKey(key);
 }
 
-string Contract::SetupContractData(const char* func, ...)
-{
+string Contract::SetupContractData(const char* func, ...) {
     if (func == nullptr) {
         return string("");
     }
@@ -170,18 +175,16 @@ string Contract::SetupContractData(const char* func, ...)
     memset(tmpScan, 0, sizeof(tmpScan));
     strcpy(tmpScan, func);
     strtok(tmpScan, "(");
-    char *scan = strtok(0, "(");
+    char* scan = strtok(0, "(");
     scan = (scan != nullptr) ? strtok(scan, ")") : nullptr;
     scan = (scan != nullptr) ? strtok(scan, ",") : nullptr;
     while (scan != nullptr) {
         unsigned uintBits = 0;
         unsigned fixedBytes = 0;
-        const bool isFixed =
-            (strstr(scan, "uint") != nullptr && strstr(scan, "[]") == nullptr && isSizedUintType(scan, &uintBits)) ||
-            isFixedBytesType(scan, &fixedBytes) ||
-            strncmp(scan, "int", 3) == 0 ||
-            strncmp(scan, "bool", 4) == 0 ||
-            strncmp(scan, "address", 7) == 0;
+        const bool isFixed = (strstr(scan, "uint") != nullptr && strstr(scan, "[]") == nullptr &&
+                              isSizedUintType(scan, &uintBits)) ||
+                             isFixedBytesType(scan, &fixedBytes) || strncmp(scan, "int", 3) == 0 ||
+                             strncmp(scan, "bool", 4) == 0 || strncmp(scan, "address", 7) == 0;
         fixedOnly = fixedOnly && isFixed;
         paramCount++;
         scan = strtok(0, ",");
@@ -198,7 +201,7 @@ string Contract::SetupContractData(const char* func, ...)
         memset(tmpFast, 0, sizeof(tmpFast));
         strcpy(tmpFast, func);
         strtok(tmpFast, "(");
-        char *p = strtok(0, "(");
+        char* p = strtok(0, "(");
         p = (p != nullptr) ? strtok(p, ")") : nullptr;
         p = (p != nullptr) ? strtok(p, ",") : nullptr;
         while (p != nullptr) {
@@ -206,14 +209,14 @@ string Contract::SetupContractData(const char* func, ...)
             unsigned fixedBytes = 0;
             if (isSizedUintType(p, &uintBits)) {
                 ret += (uintBits == 256)
-                    ? GenerateBytesForUint(va_arg(args, uint256_t *))
-                    : GenerateBytesForUintPointer(va_arg(args, const void *), uintBits / 8);
+                           ? GenerateBytesForUint(va_arg(args, uint256_t*))
+                           : GenerateBytesForUintPointer(va_arg(args, const void*), uintBits / 8);
             } else if (isFixedBytesType(p, &fixedBytes)) {
-                ret += GenerateBytesForFixedBytes(va_arg(args, string *), fixedBytes);
+                ret += GenerateBytesForFixedBytes(va_arg(args, string*), fixedBytes);
             } else if (strncmp(p, "int", 3) == 0 || strncmp(p, "bool", 4) == 0) {
                 ret += GenerateBytesForInt(va_arg(args, int32_t));
             } else if (strncmp(p, "address", 7) == 0) {
-                ret += GenerateBytesForAddress(va_arg(args, string *));
+                ret += GenerateBytesForAddress(va_arg(args, string*));
             }
             p = strtok(0, ",");
         }
@@ -228,7 +231,7 @@ string Contract::SetupContractData(const char* func, ...)
 
     paramCount = 0;
     vector<string> params;
-    char *p;
+    char* p;
     char tmp[strlen(func) + 1];
     memset(tmp, 0, sizeof(tmp));
     strcpy(tmp, func);
@@ -240,10 +243,9 @@ string Contract::SetupContractData(const char* func, ...)
         params.push_back(string(p));
         paramCount++;
     }
-    while(p != 0) {
+    while (p != 0) {
         p = strtok(0, ",");
-        if (p != 0)
-        {
+        if (p != 0) {
             params.push_back(string(p));
             paramCount++;
         }
@@ -255,94 +257,85 @@ string Contract::SetupContractData(const char* func, ...)
 
     va_list args;
     va_start(args, func);
-    for( int i = 0; i < paramCount; ++i ) {
-        if (strstr(params[i].c_str(), "uint") != NULL && strstr(params[i].c_str(), "[]") != NULL)
-        {
+    for (int i = 0; i < paramCount; ++i) {
+        if (strstr(params[i].c_str(), "uint") != NULL && strstr(params[i].c_str(), "[]") != NULL) {
             // value array
-            string output = GenerateBytesForUIntArray(va_arg(args, vector<uint32_t> *));
+            string output = GenerateBytesForUIntArray(va_arg(args, vector<uint32_t>*));
             abiBlocks.push_back(output);
             isDynamic.push_back(false);
             dynamicStartPointer += 0x20;
         }
         unsigned uintBits = 0;
-        if (isSizedUintType(params[i], &uintBits))
-        {
-            string output = (uintBits == 256)
-                ? GenerateBytesForUint(va_arg(args, uint256_t *))
-                : GenerateBytesForUintPointer(va_arg(args, const void *), uintBits / 8);
+        if (isSizedUintType(params[i], &uintBits)) {
+            string output =
+                (uintBits == 256)
+                    ? GenerateBytesForUint(va_arg(args, uint256_t*))
+                    : GenerateBytesForUintPointer(va_arg(args, const void*), uintBits / 8);
             abiBlocks.push_back(output);
             isDynamic.push_back(false);
             dynamicStartPointer += 0x20;
-        }
-        else {
+        } else {
             unsigned fixedBytes = 0;
-            if (isFixedBytesType(params[i], &fixedBytes))
-            {
-                string output = GenerateBytesForFixedBytes(va_arg(args, string *), fixedBytes);
+            if (isFixedBytesType(params[i], &fixedBytes)) {
+                string output = GenerateBytesForFixedBytes(va_arg(args, string*), fixedBytes);
                 abiBlocks.push_back(output);
                 isDynamic.push_back(false);
                 dynamicStartPointer += 0x20;
+            } else if (
+                strncmp(params[i].c_str(), "int", sizeof("int")) == 0 ||
+                strncmp(params[i].c_str(), "bool", sizeof("bool")) == 0
+            ) {
+                string output = GenerateBytesForInt(va_arg(args, int32_t));
+                abiBlocks.push_back(output);
+                isDynamic.push_back(false);
+                dynamicStartPointer += 0x20;
+            } else if (strncmp(params[i].c_str(), "address", sizeof("address")) == 0) {
+                string output = GenerateBytesForAddress(va_arg(args, string*));
+                abiBlocks.push_back(output);
+                isDynamic.push_back(false);
+                dynamicStartPointer += 0x20;
+            } else if (strncmp(params[i].c_str(), "string", sizeof("string")) == 0) {
+                string output = GenerateBytesForString(va_arg(args, string*));
+                abiBlocks.push_back(output);
+                isDynamic.push_back(true);
+                dynamicStartPointer += 0x20;
+            } else if (strncmp(params[i].c_str(), "bytes", sizeof("bytes")) == 0) // if sending
+                                                                                  // bytes, take the
+                                                                                  // value in hex
+            {
+                string output = GenerateBytesForHexBytes(va_arg(args, string*));
+                abiBlocks.push_back(output);
+                isDynamic.push_back(true);
+                dynamicStartPointer += 0x20;
+            } else if (strncmp(params[i].c_str(), "struct", sizeof("struct")) == 0) // if sending
+                                                                                    // bytes, take
+                                                                                    // the value in
+                                                                                    // hex
+            {
+                string output = GenerateBytesForStruct(va_arg(args, string*));
+                abiBlocks.push_back(output);
+                isDynamic.push_back(true);
+                dynamicStartPointer += 0x20;
             }
-            else if (strncmp(params[i].c_str(), "int", sizeof("int")) == 0 || strncmp(params[i].c_str(), "bool", sizeof("bool")) == 0)
-        {
-            string output = GenerateBytesForInt(va_arg(args, int32_t));
-            abiBlocks.push_back(output);
-            isDynamic.push_back(false);
-            dynamicStartPointer += 0x20;
-        }
-        else if (strncmp(params[i].c_str(), "address", sizeof("address")) == 0)
-        {
-            string output = GenerateBytesForAddress(va_arg(args, string *));
-            abiBlocks.push_back(output);
-            isDynamic.push_back(false);
-            dynamicStartPointer += 0x20;
-        }
-        else if (strncmp(params[i].c_str(), "string", sizeof("string")) == 0)
-        {
-            string output = GenerateBytesForString(va_arg(args, string *));
-            abiBlocks.push_back(output);
-            isDynamic.push_back(true);
-            dynamicStartPointer += 0x20;
-        }
-        else if (strncmp(params[i].c_str(), "bytes", sizeof("bytes")) == 0) //if sending bytes, take the value in hex
-        {
-            string output = GenerateBytesForHexBytes(va_arg(args, string *));
-            abiBlocks.push_back(output);
-            isDynamic.push_back(true);
-            dynamicStartPointer += 0x20;
-        }
-        else if (strncmp(params[i].c_str(), "struct", sizeof("struct")) == 0) //if sending bytes, take the value in hex
-        {
-            string output = GenerateBytesForStruct(va_arg(args, string *));
-            abiBlocks.push_back(output);
-            isDynamic.push_back(true);
-            dynamicStartPointer += 0x20;
-        }
         }
     }
     va_end(args);
 
     uint256_t abiOffet = uint256_t(dynamicStartPointer);
-    //now build output - parse 1, standard params
-    for( int i = 0; i < paramCount; ++i ) 
-    {
-        if (isDynamic[i])
-        {
+    // now build output - parse 1, standard params
+    for (int i = 0; i < paramCount; ++i) {
+        if (isDynamic[i]) {
             ret = ret + abiOffet.str(16, 64);
-            string *outputHex = &abiBlocks[i];
+            string* outputHex = &abiBlocks[i];
             abiOffet += outputHex->size() / 2;
-        }
-        else
-        {
+        } else {
             ret = ret + abiBlocks[i];
         }
     }
 
-    //parse 2: add dynamic params
-    for( int i = 0; i < paramCount; ++i ) 
-    {
-        if (isDynamic[i])
-        {
+    // parse 2: add dynamic params
+    for (int i = 0; i < paramCount; ++i) {
+        if (isDynamic[i]) {
             ret = ret + abiBlocks[i];
         }
     }
@@ -350,14 +343,12 @@ string Contract::SetupContractData(const char* func, ...)
     return ret;
 }
 
-string Contract::ViewCall(const string *param)
-{
+string Contract::ViewCall(const string* param) {
     string result = web3->EthViewCall(param, contractAddress);
     return result;
 }
 
-string Contract::Call(const string *param)
-{
+string Contract::Call(const string* param) {
     const string from = string(options.from);
     const long gasPrice = strtol(options.gasPrice, nullptr, 10);
     const string value = "";
@@ -366,41 +357,81 @@ string Contract::Call(const string *param)
     return result;
 }
 
-string Contract::SendTransaction(uint32_t nonceVal, unsigned long long gasPriceVal, uint32_t gasLimitVal,
-                                 string *toStr, uint256_t *valueStr, string *dataStr)
-{
+string Contract::SendTransaction(
+    uint32_t nonceVal,
+    unsigned long long gasPriceVal,
+    uint32_t gasLimitVal,
+    string* toStr,
+    uint256_t* valueStr,
+    string* dataStr
+) {
     uint8_t signature[SIGNATURE_LENGTH];
     memset(signature, 0, SIGNATURE_LENGTH);
     int recid[1] = {0};
-    GenerateSignature(signature, recid, nonceVal, gasPriceVal, gasLimitVal,
-                      toStr, valueStr, dataStr);
+    GenerateSignature(
+        signature,
+        recid,
+        nonceVal,
+        gasPriceVal,
+        gasLimitVal,
+        toStr,
+        valueStr,
+        dataStr
+    );
 
     string paramStr;
     uint32_t paramSize = 0;
     {
-        vector<uint8_t> param = RlpEncodeForRawTransaction(nonceVal, gasPriceVal, gasLimitVal,
-                                                           toStr, valueStr, dataStr,
-                                                           signature, recid[0]);
+        vector<uint8_t> param = RlpEncodeForRawTransaction(
+            nonceVal,
+            gasPriceVal,
+            gasLimitVal,
+            toStr,
+            valueStr,
+            dataStr,
+            signature,
+            recid[0]
+        );
         paramSize = param.size();
         paramStr = Util::VectorToString(&param);
     } // Release raw RLP bytes before building JSON and entering TLS.
     return web3->EthSendSignedTransaction(&paramStr, paramSize);
 }
 
-string
-Contract::SignTransaction(uint32_t nonceVal, unsigned long long gasPriceVal, uint32_t gasLimitVal, string *toStr,
-                          uint256_t *valueStr, string *dataStr) {
+string Contract::SignTransaction(
+    uint32_t nonceVal,
+    unsigned long long gasPriceVal,
+    uint32_t gasLimitVal,
+    string* toStr,
+    uint256_t* valueStr,
+    string* dataStr
+) {
 
     uint8_t signature[SIGNATURE_LENGTH];
     memset(signature, 0, SIGNATURE_LENGTH);
     int recid[1] = {0};
 
-    GenerateSignature(signature, recid, nonceVal, gasPriceVal, gasLimitVal,
-                      toStr, valueStr, dataStr);
+    GenerateSignature(
+        signature,
+        recid,
+        nonceVal,
+        gasPriceVal,
+        gasLimitVal,
+        toStr,
+        valueStr,
+        dataStr
+    );
 
-    vector<uint8_t> param = RlpEncodeForRawTransaction(nonceVal, gasPriceVal, gasLimitVal,
-                                                       toStr, valueStr, dataStr,
-                                                       signature, recid[0]);
+    vector<uint8_t> param = RlpEncodeForRawTransaction(
+        nonceVal,
+        gasPriceVal,
+        gasLimitVal,
+        toStr,
+        valueStr,
+        dataStr,
+        signature,
+        recid[0]
+    );
     return Util::VectorToString(&param);
 }
 
@@ -408,8 +439,7 @@ Contract::SignTransaction(uint32_t nonceVal, unsigned long long gasPriceVal, uin
  * Utility functions
  **/
 
-void Contract::ReplaceFunction(std::string &param, const char* func)
-{
+void Contract::ReplaceFunction(std::string& param, const char* func) {
     param = GenerateContractBytes(func) + param.substr(10);
 }
 
@@ -417,40 +447,45 @@ void Contract::ReplaceFunction(std::string &param, const char* func)
  * Private functions
  **/
 
-void Contract::GenerateSignature(uint8_t *signature, int *recid, uint32_t nonceVal, unsigned long long gasPriceVal, uint32_t gasLimitVal,
-                                 string *toStr, uint256_t *valueStr, string *dataStr)
-{
-    vector<uint8_t> encoded = RlpEncode(nonceVal, gasPriceVal, gasLimitVal, toStr, valueStr, dataStr);
+void Contract::GenerateSignature(
+    uint8_t* signature,
+    int* recid,
+    uint32_t nonceVal,
+    unsigned long long gasPriceVal,
+    uint32_t gasLimitVal,
+    string* toStr,
+    uint256_t* valueStr,
+    string* dataStr
+) {
+    vector<uint8_t> encoded =
+        RlpEncode(nonceVal, gasPriceVal, gasLimitVal, toStr, valueStr, dataStr);
     uint8_t hash[ETHERS_KECCAK256_LENGTH];
     Crypto::Keccak256(encoded.data(), encoded.size(), hash);
 
     // sign
-    Sign((uint8_t *)hash, signature, recid);
+    Sign((uint8_t*)hash, signature, recid);
 }
 
-std::string Contract::GenerateContractBytes(const char *func)
-{
-    std::string in = Util::ConvertBytesToHex((const uint8_t *)func, strlen(func));
-    //get the hash of the input
+std::string Contract::GenerateContractBytes(const char* func) {
+    std::string in = Util::ConvertBytesToHex((const uint8_t*)func, strlen(func));
+    // get the hash of the input
     std::vector<uint8_t> contractBytes = Util::ConvertHexToVector(&in);
     std::string out = Crypto::Keccak256(&contractBytes);
     out.resize(10);
     return out;
 }
 
-string Contract::GenerateBytesForUint(const uint256_t *value)
-{
+string Contract::GenerateBytesForUint(const uint256_t* value) {
     std::vector<uint8_t> bits = value->export_bits();
     return Util::PlainVectorToString(&bits);
 }
 
-string Contract::GenerateBytesForUintPointer(const void *value, size_t byteSize)
-{
+string Contract::GenerateBytesForUintPointer(const void* value, size_t byteSize) {
     if (value == nullptr || byteSize == 0 || byteSize > 32) {
         return string(64, '0');
     }
 
-    const uint8_t *bytes = static_cast<const uint8_t *>(value);
+    const uint8_t* bytes = static_cast<const uint8_t*>(value);
     string output(64, '0');
     for (size_t i = 0; i < byteSize; ++i) {
         char hex[3];
@@ -460,28 +495,26 @@ string Contract::GenerateBytesForUintPointer(const void *value, size_t byteSize)
     return output;
 }
 
-string Contract::GenerateBytesForInt(const int32_t value)
-{
+string Contract::GenerateBytesForInt(const int32_t value) {
     return string(56, '0') + Util::ConvertIntegerToBytes(value);
 }
 
-string Contract::GenerateBytesForUIntArray(const vector<uint32_t> *v)
-{
+string Contract::GenerateBytesForUIntArray(const vector<uint32_t>* v) {
     string dynamicMarker = std::string(64, '0');
-    dynamicMarker.at(62) = '4'; //0x000...40 Array Designator
+    dynamicMarker.at(62) = '4'; // 0x000...40 Array Designator
     string arraySize = GenerateBytesForInt(v->size());
     string output = dynamicMarker + arraySize;
-    for (auto itr = v->begin(); itr != v->end(); itr++)
-    {
+    for (auto itr = v->begin(); itr != v->end(); itr++) {
         output += GenerateBytesForInt(*itr);
     }
 
     return output;
 }
 
-static bool stripHexPrefix(const string *value, string *cleaned)
-{
-    if (value == nullptr || cleaned == nullptr) return false;
+static bool stripHexPrefix(const string* value, string* cleaned) {
+    if (value == nullptr || cleaned == nullptr) {
+        return false;
+    }
     *cleaned = *value;
     if (cleaned->length() >= 2 && cleaned->at(0) == '0' &&
         (cleaned->at(1) == 'x' || cleaned->at(1) == 'X')) {
@@ -490,44 +523,46 @@ static bool stripHexPrefix(const string *value, string *cleaned)
     return true;
 }
 
-static bool isHexString(const string& value)
-{
+static bool isHexString(const string& value) {
     for (size_t i = 0; i < value.length(); ++i) {
-        if (!isxdigit(static_cast<unsigned char>(value[i]))) return false;
+        if (!isxdigit(static_cast<unsigned char>(value[i]))) {
+            return false;
+        }
     }
     return true;
 }
 
-string Contract::GenerateBytesForAddress(const string *v)
-{
+string Contract::GenerateBytesForAddress(const string* v) {
     string cleaned;
     if (!stripHexPrefix(v, &cleaned) || cleaned.length() > 40 || !isHexString(cleaned)) {
         return string(64, '0');
     }
+
     return string(64 - cleaned.length(), '0') + cleaned;
 }
 
-string Contract::GenerateBytesForString(const string *value)
-{
-    if (value == nullptr) return string(64, '0');
+string Contract::GenerateBytesForString(const string* value) {
+    if (value == nullptr) {
+        return string(64, '0');
+    }
+
     return GenerateBytesForBytes(value->c_str(), value->length());
 }
 
-string Contract::GenerateBytesForHexBytes(const string *value)
-{
+string Contract::GenerateBytesForHexBytes(const string* value) {
     string cleaned;
     if (!stripHexPrefix(value, &cleaned) || (cleaned.length() % 2) != 0 || !isHexString(cleaned)) {
         return string(64, '0');
     }
-    string digitsStr = Util::intToHex(cleaned.length() / 2); //bytes length will be hex length / 2
+
+    string digitsStr = Util::intToHex(cleaned.length() / 2); // bytes length will be hex length / 2
     string lengthDesignator = string(64 - digitsStr.length(), '0') + digitsStr;
     cleaned = lengthDesignator + cleaned;
     size_t digits = cleaned.length() % 64;
     return cleaned + (digits > 0 ? string(64 - digits, '0') : "");
 }
 
-string Contract::GenerateBytesForFixedBytes(const string *value, size_t byteSize)
-{
+string Contract::GenerateBytesForFixedBytes(const string* value, size_t byteSize) {
     string cleaned = *value;
     if (cleaned.length() >= 2 && cleaned.at(0) == '0' &&
         (cleaned.at(1) == 'x' || cleaned.at(1) == 'X')) {
@@ -548,25 +583,31 @@ string Contract::GenerateBytesForFixedBytes(const string *value, size_t byteSize
     return cleaned + string(64 - cleaned.length(), '0');
 }
 
-string Contract::GenerateBytesForStruct(const string *value)
-{
+string Contract::GenerateBytesForStruct(const string* value) {
     string cleaned;
-    if (!stripHexPrefix(value, &cleaned) || !isHexString(cleaned)) return "";
+    if (!stripHexPrefix(value, &cleaned) || !isHexString(cleaned)) {
+        return "";
+    }
+
     size_t digits = cleaned.length() % 64;
     return cleaned + (digits > 0 ? string(64 - digits, '0') : "");
 }
 
-string Contract::GenerateBytesForBytes(const char *value, const int len)
-{
-    string bytesStr = Util::ConvertBytesToHex((const uint8_t *)value, len).substr(2); //clean hex prefix;
+string Contract::GenerateBytesForBytes(const char* value, const int len) {
+    string bytesStr =
+        Util::ConvertBytesToHex((const uint8_t*)value, len).substr(2); // clean hex prefix;
     size_t digits = bytesStr.length() % 64;
     return bytesStr + (digits > 0 ? string(64 - digits, '0') : "");
 }
 
 vector<uint8_t> Contract::RlpEncode(
-    uint32_t nonceVal, unsigned long long gasPriceVal, uint32_t gasLimitVal,
-    string *toStr, uint256_t *val, string *dataStr)
-{
+    uint32_t nonceVal,
+    unsigned long long gasPriceVal,
+    uint32_t gasLimitVal,
+    string* toStr,
+    uint256_t* val,
+    string* dataStr
+) {
     vector<uint8_t> nonce = Util::ConvertNumberToVector(nonceVal);
     vector<uint8_t> gasPrice = Util::ConvertNumberToVector(gasPriceVal);
     vector<uint8_t> gasLimit = Util::ConvertNumberToVector(gasLimitVal);
@@ -588,19 +629,15 @@ vector<uint8_t> Contract::RlpEncode(
     vector<uint8_t> outputZero = Util::RlpEncodeItemWithVector(zero);
 
     vector<uint8_t> encoded = Util::RlpEncodeWholeHeaderWithVector(
-        outputNonce.size() +
-        outputGasPrice.size() +
-        outputGasLimit.size() +
-        outputTo.size() +
-        outputValue.size() +
-        outputData.size() +
-        outputChainId.size() +
-        outputZero.size() +
-        outputZero.size());
-    encoded.reserve(encoded.size() + outputNonce.size() + outputGasPrice.size() +
-                    outputGasLimit.size() + outputTo.size() + outputValue.size() +
-                    outputData.size() + outputChainId.size() +
-                    outputZero.size() * 2);
+        outputNonce.size() + outputGasPrice.size() + outputGasLimit.size() + outputTo.size() +
+        outputValue.size() + outputData.size() + outputChainId.size() + outputZero.size() +
+        outputZero.size()
+    );
+    encoded.reserve(
+        encoded.size() + outputNonce.size() + outputGasPrice.size() + outputGasLimit.size() +
+        outputTo.size() + outputValue.size() + outputData.size() + outputChainId.size() +
+        outputZero.size() * 2
+    );
 
     encoded.insert(encoded.end(), outputNonce.begin(), outputNonce.end());
     encoded.insert(encoded.end(), outputGasPrice.begin(), outputGasPrice.end());
@@ -616,18 +653,23 @@ vector<uint8_t> Contract::RlpEncode(
     return encoded;
 }
 
-void Contract::Sign(uint8_t *hash, uint8_t *sig, int *recid)
-{
+void Contract::Sign(uint8_t* hash, uint8_t* sig, int* recid) {
     BYTE fullSig[65];
     crypto->Sign(hash, fullSig);
     *recid = fullSig[64];
-    memcpy(sig,fullSig, 64);
+    memcpy(sig, fullSig, 64);
 }
 
 vector<uint8_t> Contract::RlpEncodeForRawTransaction(
-    uint32_t nonceVal, unsigned long long gasPriceVal, uint32_t gasLimitVal,
-    string *toStr, uint256_t *val, string *dataStr, uint8_t *sig, uint8_t recid)
-{
+    uint32_t nonceVal,
+    unsigned long long gasPriceVal,
+    uint32_t gasLimitVal,
+    string* toStr,
+    uint256_t* val,
+    string* dataStr,
+    uint8_t* sig,
+    uint8_t recid
+) {
     vector<uint8_t> nonce = Util::ConvertNumberToVector(nonceVal);
     vector<uint8_t> gasPrice = Util::ConvertNumberToVector(gasPriceVal);
     vector<uint8_t> gasLimit = Util::ConvertNumberToVector(gasLimitVal);
@@ -639,14 +681,10 @@ vector<uint8_t> Contract::RlpEncodeForRawTransaction(
     vector<uint8_t> V = vv.export_bits_truncate();
 
     const size_t payloadSize =
-        rlpItemSize(nonce.data(), nonce.size()) +
-        rlpItemSize(gasPrice.data(), gasPrice.size()) +
-        rlpItemSize(gasLimit.data(), gasLimit.size()) +
-        rlpItemSize(to.data(), to.size()) +
-        rlpItemSize(value.data(), value.size()) +
-        rlpItemSize(data.data(), data.size()) +
-        rlpItemSize(V.data(), V.size()) +
-        rlpItemSize(sig, SIGNATURE_LENGTH / 2) +
+        rlpItemSize(nonce.data(), nonce.size()) + rlpItemSize(gasPrice.data(), gasPrice.size()) +
+        rlpItemSize(gasLimit.data(), gasLimit.size()) + rlpItemSize(to.data(), to.size()) +
+        rlpItemSize(value.data(), value.size()) + rlpItemSize(data.data(), data.size()) +
+        rlpItemSize(V.data(), V.size()) + rlpItemSize(sig, SIGNATURE_LENGTH / 2) +
         rlpItemSize(sig + (SIGNATURE_LENGTH / 2), SIGNATURE_LENGTH / 2);
 
     vector<uint8_t> encoded;

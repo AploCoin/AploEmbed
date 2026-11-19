@@ -12,3 +12,10 @@ AllowShortLoopsOnASingleLine: false
 NamespaceIndentation: None
 PointerAlignment: Left
 SortIncludes: Never
+UseTab: Never
+SeparateDefinitionBlocks: Always
+AlignAfterOpenBracket: BlockIndent
+BinPackArguments: false
+BinPackParameters: false
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false

@@ -9,11 +9,11 @@
 #define APLOEMBED_WEB3_H
 
 typedef unsigned char BYTE;
-#define ETHERS_PRIVATEKEY_LENGTH       32
-#define ETHERS_PUBLICKEY_LENGTH        64
-#define ETHERS_ADDRESS_LENGTH          20
-#define ETHERS_KECCAK256_LENGTH        32
-#define ETHERS_SIGNATURE_LENGTH        65
+#define ETHERS_PRIVATEKEY_LENGTH 32
+#define ETHERS_PUBLICKEY_LENGTH 64
+#define ETHERS_ADDRESS_LENGTH 20
+#define ETHERS_KECCAK256_LENGTH 32
+#define ETHERS_SIGNATURE_LENGTH 65
 
 class Web3;
 class Crypto;
@@ -31,13 +31,7 @@ class KeyID;
 #define APLO_ESP8266_RPC_RESPONSE_MAX 768
 #endif
 
-enum ConnectionStage
-{
-    unconnected,
-    handshake,
-    have_token,
-    confirmed
-};
+enum ConnectionStage { unconnected, handshake, have_token, confirmed };
 
 class Web3 {
 public:
@@ -85,6 +79,7 @@ public:
         ConnectionFailed,
         FragmentLength
     };
+
     TlsError tlsError() const {
         return lastTlsError;
     }
@@ -105,31 +100,53 @@ public:
     int EthBlockNumber();
     uint256_t EthGetBalance(const std::string* address);
     int EthGetTransactionCount(const std::string* address);
-    // Returns 1 for a successful receipt, 0 for a reverted receipt, and -1 while pending/unavailable.
+    // Returns 1 for a successful receipt, 0 for a reverted receipt, and -1 while
+    // pending/unavailable.
     int EthGetTransactionReceiptStatus(const std::string* transactionHash);
     std::string EthViewCall(const std::string* data, const char* to);
 
-    std::string EthCall(const std::string* from, const char* to, long gas, long gasPrice, const std::string* value, const std::string* data);
+    std::string EthCall(
+        const std::string* from,
+        const char* to,
+        long gas,
+        long gasPrice,
+        const std::string* value,
+        const std::string* data
+    );
     std::string EthSendSignedTransaction(const std::string* data, const uint32_t dataLen);
 
     // AploCoin-specific helpers
     // Balance helpers with unit conversion
     // APLO and GAplo are separate assets; each uses 10^18 base units.
-    uint256_t AploGetAploBalance(const std::string* address);  // APLO balance in wei units
-    std::string AploGetAploBalanceString(const std::string* address);  // APLO balance as human-readable APLO
-    uint256_t AploGetGasBalance(const std::string* address);  // Gas balance in Gaplo units
-    std::string AploGetGasBalanceString(const std::string* address);  // Gas balance as human-readable GAPLO
-    uint256_t AploGetBalance(const std::string* address);  // Backward compatible alias for APLO balance
-    std::string AploGetBalanceInAplo(const std::string* address);  // Backward compatible alias for APLO balance
-    
+    uint256_t AploGetAploBalance(const std::string* address); // APLO balance in wei units
+    std::string
+    AploGetAploBalanceString(const std::string* address);    // APLO balance as human-readable APLO
+    uint256_t AploGetGasBalance(const std::string* address); // Gas balance in Gaplo units
+    std::string
+    AploGetGasBalanceString(const std::string* address); // Gas balance as human-readable GAPLO
+    uint256_t
+    AploGetBalance(const std::string* address); // Backward compatible alias for APLO balance
+    std::string
+    AploGetBalanceInAplo(const std::string* address); // Backward compatible alias for APLO balance
+
     // Staking operations (requires staking contract address, private key, and sender address)
     // All amounts in Gaplo (wei)
     // Returns transaction hash on success, empty std::string on failure
-    std::string AploStake(const std::string* stakingContract, const uint256_t* amount, const char* privateKey, const std::string* fromAddress);
-    std::string AploUnstake(const std::string* stakingContract, const char* privateKey, const std::string* fromAddress);
+    std::string AploStake(
+        const std::string* stakingContract,
+        const uint256_t* amount,
+        const char* privateKey,
+        const std::string* fromAddress
+    );
+    std::string AploUnstake(
+        const std::string* stakingContract,
+        const char* privateKey,
+        const std::string* fromAddress
+    );
     uint256_t AploGetStake(const std::string* stakingContract, const std::string* account);
-    uint256_t AploGetStakeMultiplier(const std::string* stakingContract, const std::string* account);
-    
+    uint256_t
+    AploGetStakeMultiplier(const std::string* stakingContract, const std::string* account);
+
     long long int getLongLong(const std::string* json);
     std::string getString(const std::string* json);
     int getInt(const std::string* json);
@@ -151,33 +168,35 @@ private:
         RpcEndpoint()
             : path("/"), port(443)
 #if defined(ESP8266)
-            , tlsBufferSize(0)
+              ,
+              tlsBufferSize(0)
 #endif
-            , retryAfterMs(0)
-            , valid(false) {}
+              ,
+              retryAfterMs(0), valid(false) {
+        }
     };
 
     std::string exec(const std::string* data, RpcEndpoint& endpoint);
-    std::string execWithFailover(const std::string* data);  // RPC failover wrapper
+    std::string execWithFailover(const std::string* data); // RPC failover wrapper
     std::string generateJson(const std::string* method, const std::string* params);
-    static bool parseEndpoint(const char* url, RpcEndpoint* endpoint,
-                              bool requireHttps = false);
+    static bool parseEndpoint(const char* url, RpcEndpoint* endpoint, bool requireHttps = false);
     bool setupCert(const RpcEndpoint& endpoint);
     void initWeb3(const char* primaryRpc, const char* fallbackRpc);
-    
+
     long getLong(const std::string* json);
     double getDouble(const std::string* json);
     bool getBool(const std::string* json);
 
 private:
-    WiFiClientSecure *client;
+    WiFiClientSecure* client;
     const char* host;
     RpcEndpoint primaryEndpoint;
     RpcEndpoint fallbackEndpoint;
-    long long chainId;  // Fixed to APLO_ID (28282)
-    
+    long long chainId; // Fixed to APLO_ID (28282)
+
     // Certificate configuration state
     enum CertMode { CERT_PROFILE, CERT_BUNDLE, CERT_CA, CERT_UNAVAILABLE };
+
     CertMode certMode;
     const char* caCert;
     const uint8_t* certBundle;
@@ -190,4 +209,4 @@ private:
 #endif
 };
 
-#endif //APLOEMBED_WEB3_H
+#endif // APLOEMBED_WEB3_H

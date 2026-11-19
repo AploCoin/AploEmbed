@@ -13,12 +13,15 @@ int HexDigit(char character) {
     if (character >= '0' && character <= '9') {
         return character - '0';
     }
+
     if (character >= 'a' && character <= 'f') {
         return character - 'a' + 10;
     }
+
     if (character >= 'A' && character <= 'F') {
         return character - 'A' + 10;
     }
+
     return -1;
 }
 
@@ -54,6 +57,7 @@ bool JsonRpcParser::ExpectsValue() const {
     if (!depth_) {
         return !complete_;
     }
+
     const Frame& frame = stack_[depth_ - 1];
     return frame.type == '{' ? frame.phase == Phase::Value
                              : frame.phase == Phase::First || frame.phase == Phase::ArrayValue;
@@ -64,6 +68,7 @@ void JsonRpcParser::StartValue(char character) {
         invalid_ = true;
         return;
     }
+
     const Key key = CurrentKey();
     if (depth_ == 1) {
         bool* seen = nullptr;
@@ -110,9 +115,11 @@ void JsonRpcParser::StartValue(char character) {
             invalid_ = true;
             return;
         }
+
         stack_[depth_++] = {character, Phase::First, Key::Other};
         return;
     }
+
     StartToken();
     if (character == '"') {
         inString_ = true;
@@ -130,6 +137,7 @@ void JsonRpcParser::FinishValue(size_t end) {
         complete_ = true;
         return;
     }
+
     Frame& frame = stack_[depth_ - 1];
     if (depth_ == 1 && frame.key == Key::Result) {
         result_.end = end;
@@ -165,6 +173,7 @@ void JsonRpcParser::FinishString() {
         frame.phase = Phase::Colon;
         return;
     }
+
     if (depth_ == 1 && CurrentKey() == Key::Version && !TokenIs("2.0")) {
         invalid_ = true;
     }
@@ -188,6 +197,7 @@ void JsonRpcParser::NumberCharacter(char character) {
             number_ = Number::Minus;
             return;
         }
+
         // Fall through to the first integer digit.
     case Number::Minus:
         number_ = character == '0' ? Number::Zero : digit ? Number::Integer : Number::Bad;
@@ -197,6 +207,7 @@ void JsonRpcParser::NumberCharacter(char character) {
         if (digit && number_ == Number::Integer) {
             return;
         }
+
         number_ = character == '.'                         ? Number::Dot
                   : (character == 'e' || character == 'E') ? Number::Exponent
                                                            : Number::Bad;
@@ -208,6 +219,7 @@ void JsonRpcParser::NumberCharacter(char character) {
         if (digit) {
             return;
         }
+
         number_ = (character == 'e' || character == 'E') ? Number::Exponent : Number::Bad;
         return;
     case Number::Exponent:
@@ -215,6 +227,7 @@ void JsonRpcParser::NumberCharacter(char character) {
             number_ = Number::Sign;
             return;
         }
+
         // An exponent may start directly with a digit.
     case Number::Sign:
     case Number::Digits:
@@ -232,11 +245,13 @@ void JsonRpcParser::FinishPrimitive() {
         invalid_ = true;
         return;
     }
+
     if (depth_ == 1) {
         if (CurrentKey() == Key::Result && TokenIs("null")) {
             receipt_ = Receipt::Pending;
-        } else if ((CurrentKey() == Key::Error || CurrentKey() == Key::Id) && !number &&
-                   !TokenIs("null")) {
+        } else if (
+            (CurrentKey() == Key::Error || CurrentKey() == Key::Id) && !number && !TokenIs("null")
+        ) {
             invalid_ = true;
         }
     }
@@ -266,6 +281,7 @@ void JsonRpcParser::Push(char character) {
                 invalid_ = true;
                 return;
             }
+
             unicodeValue_ = unicodeValue_ * 16 + static_cast<unsigned>(digit);
             if (--unicodeRemaining_ == 0) {
                 // Decode ASCII so escaped protocol keys cannot bypass duplicates.
@@ -273,6 +289,7 @@ void JsonRpcParser::Push(char character) {
             }
             return;
         }
+
         if (escaped_) {
             escaped_ = false;
             switch (character) {
@@ -316,6 +333,7 @@ void JsonRpcParser::Push(char character) {
         }
         return;
     }
+
     const bool space = IsSpace(character);
     if (primitive_) {
         if (!space && character != ',' && character != '}' && character != ']') {
@@ -323,6 +341,7 @@ void JsonRpcParser::Push(char character) {
             NumberCharacter(character);
             return;
         }
+
         FinishPrimitive();
         if (invalid_) {
             return;
@@ -331,10 +350,12 @@ void JsonRpcParser::Push(char character) {
     if (space) {
         return;
     }
+
     if (complete_) {
         invalid_ = true;
         return;
     }
+
     if (depth_) {
         Frame& frame = stack_[depth_ - 1];
         if (frame.type == '{' && (frame.phase == Phase::First || frame.phase == Phase::Key)) {
@@ -342,15 +363,18 @@ void JsonRpcParser::Push(char character) {
                 CloseFrame();
                 return;
             }
+
             if (character != '"') {
                 invalid_ = true;
                 return;
             }
+
             StartToken();
             inString_ = true;
             keyString_ = true;
             return;
         }
+
         if (frame.type == '{' && frame.phase == Phase::Colon) {
             if (character == ':') {
                 frame.phase = Phase::Value;
@@ -359,6 +383,7 @@ void JsonRpcParser::Push(char character) {
             }
             return;
         }
+
         if (frame.phase == Phase::Separator) {
             if (character == ',') {
                 frame.phase = frame.type == '{' ? Phase::Key : Phase::ArrayValue;
@@ -369,6 +394,7 @@ void JsonRpcParser::Push(char character) {
             }
             return;
         }
+
         if (frame.type == '[' && frame.phase == Phase::First && character == ']') {
             CloseFrame();
             return;
@@ -378,6 +404,7 @@ void JsonRpcParser::Push(char character) {
         invalid_ = true;
         return;
     }
+
     StartValue(character);
 }
 
@@ -385,9 +412,11 @@ JsonRpcParser::Outcome JsonRpcParser::Result() const {
     if (invalid_ || !complete_ || depth_ || inString_ || primitive_) {
         return Outcome::Invalid;
     }
+
     if (rpcError_) {
         return Outcome::RpcError;
     }
+
     return resultSeen_ ? Outcome::Result : Outcome::Invalid;
 }
 

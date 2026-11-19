@@ -12,22 +12,21 @@
 
 using std::string;
 
-TagReader::TagReader()
-{
+TagReader::TagReader() {
     _length = 0;
 }
 
-char *TagReader::skipWhitespace(char *p)
-{
+char* TagReader::skipWhitespace(char* p) {
     while (p != nullptr && (*p == ' ' || *p == '\n' || *p == '\r' || *p == '\t')) {
         ++p;
     }
     return p;
 }
 
-char *TagReader::parseString(char *p, char **out)
-{
-    if (p == nullptr || *p != '"') return nullptr;
+char* TagReader::parseString(char* p, char** out) {
+    if (p == nullptr || *p != '"') {
+        return nullptr;
+    }
     ++p;
     *out = p;
 
@@ -46,40 +45,48 @@ char *TagReader::parseString(char *p, char **out)
     return nullptr;
 }
 
-char *TagReader::parsePrimitive(char *p, char **out)
-{
-    if (p == nullptr) return nullptr;
+char* TagReader::parsePrimitive(char* p, char** out) {
+    if (p == nullptr) {
+        return nullptr;
+    }
+
     p = skipWhitespace(p);
     *out = p;
-    while (*p != '\0' && *p != ',' && *p != '}' && *p != ']' &&
-           *p != ' ' && *p != '\n' && *p != '\r' && *p != '\t') {
+    while (*p != '\0' && *p != ',' && *p != '}' && *p != ']' && *p != ' ' && *p != '\n' &&
+           *p != '\r' && *p != '\t') {
         ++p;
     }
     if (*p != '\0') {
         *p = '\0';
         return p + 1;
     }
+
     return p;
 }
 
-bool TagReader::equals(const char *a, const char *b)
-{
-    if (a == nullptr || b == nullptr) return false;
+bool TagReader::equals(const char* a, const char* b) {
+    if (a == nullptr || b == nullptr) {
+        return false;
+    }
+
     return strcmp(a, b) == 0;
 }
 
-size_t TagReader::parse(char *jsonBuffer)
-{
+size_t TagReader::parse(char* jsonBuffer) {
     _tags.clear();
     _length = 0;
 
-    if (jsonBuffer == nullptr) return 0;
+    if (jsonBuffer == nullptr) {
+        return 0;
+    }
 
-    char *p = jsonBuffer;
+    char* p = jsonBuffer;
     while ((p = strchr(p, '"')) != nullptr) {
-        char *key = nullptr;
+        char* key = nullptr;
         p = parseString(p, &key);
-        if (p == nullptr) break;
+        if (p == nullptr) {
+            break;
+        }
 
         p = skipWhitespace(p);
         if (p == nullptr || *p != ':') {
@@ -88,13 +95,15 @@ size_t TagReader::parse(char *jsonBuffer)
         ++p;
         p = skipWhitespace(p);
 
-        char *value = nullptr;
+        char* value = nullptr;
         if (p != nullptr && *p == '"') {
             p = parseString(p, &value);
         } else {
             p = parsePrimitive(p, &value);
         }
-        if (p == nullptr || value == nullptr) break;
+        if (p == nullptr || value == nullptr) {
+            break;
+        }
 
         Tag tag;
         tag.key = key;
@@ -105,8 +114,7 @@ size_t TagReader::parse(char *jsonBuffer)
     return _tags.size();
 }
 
-const char *TagReader::getValue(const char *key) const
-{
+const char* TagReader::getValue(const char* key) const {
     for (size_t i = 0; i < _tags.size(); ++i) {
         if (equals(_tags[i].key, key)) {
             _length = strlen(_tags[i].value);
@@ -117,18 +125,17 @@ const char *TagReader::getValue(const char *key) const
     return "";
 }
 
-const char *TagReader::getTag(char *jsonBuffer, const char *key)
-{
+const char* TagReader::getTag(char* jsonBuffer, const char* key) {
     if (jsonBuffer == nullptr || key == nullptr) {
         _length = 0;
         return "";
     }
+
     parse(jsonBuffer);
     return getValue(key);
 }
 
-const string TagReader::getTag(const string *JSON_Str, const char *value)
-{
+const string TagReader::getTag(const string* JSON_Str, const char* value) {
     if (JSON_Str == nullptr || value == nullptr) {
         _length = 0;
         return string("");

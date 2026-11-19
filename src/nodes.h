@@ -6,14 +6,12 @@
 #define APLO_FALLBACK_RPC_URL "pub2.aplocoin.com"
 
 // Get primary Aplo RPC node
-const char* getAploPrimaryNode()
-{
+const char* getAploPrimaryNode() {
     return APLO_PRIMARY_RPC_URL;
 }
 
 // Get fallback Aplo RPC node
-const char* getAploFallbackNode()
-{
+const char* getAploFallbackNode() {
     return APLO_FALLBACK_RPC_URL;
 }
 

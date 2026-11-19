@@ -11,6 +11,7 @@ static void appendLengthPrefix(vector<uint8_t>& output, size_t length, uint8_t b
         output.push_back(base + length);
         return;
     }
+
     size_t remaining = length;
     size_t count = 0;
     while (remaining) {
@@ -79,14 +80,22 @@ static vector<uint8_t> encodeTransaction(const NativeTransaction& tx, const uint
     return output;
 }
 
-SessionResult SessionKeys::SignTransaction(const NativeTransaction& tx, DigestSigner signer,
-                                           void* context, const string& expectedSigner,
-                                           string& raw) {
+SessionResult SessionKeys::SignTransaction(
+    const NativeTransaction& tx,
+    DigestSigner signer,
+    void* context,
+    const string& expectedSigner,
+    string& raw
+) {
     raw.clear();
-    if (!signer || !isAddress(expectedSigner) || isZeroAddress(expectedSigner) ||
-        !isAddress(tx.to) || !isHex(tx.data) || tx.gasLimit == 0 || tx.nonce == UINT64_MAX) {
+    if (!signer || !isAddress(expectedSigner) || isZeroAddress(expectedSigner)) {
         return invalidArgument("invalid EIP155 transaction or exhausted nonce");
     }
+
+    if (!isAddress(tx.to) || !isHex(tx.data) || tx.gasLimit == 0 || tx.nonce == UINT64_MAX) {
+        return invalidArgument("invalid EIP155 transaction or exhausted nonce");
+    }
+
     uint8_t digest[32];
     uint8_t signature[65] = {};
     {

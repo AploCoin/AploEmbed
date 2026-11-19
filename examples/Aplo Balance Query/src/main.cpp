@@ -7,31 +7,33 @@
 
 using std::string;
 
-extern const char *ssid;
-extern const char *password;
+extern const char* ssid;
+extern const char* password;
 
 #if defined(ESP8266)
 static WiFiEventHandler wifiDisconnectHandler;
 #endif
 
-static void initWifi()
-{
+static void initWifi() {
 #if defined(ESP8266)
-    wifiDisconnectHandler = WiFi.onStationModeDisconnected(
-        [](const WiFiEventStationModeDisconnected &event) {
+    wifiDisconnectHandler =
+        WiFi.onStationModeDisconnected([](const WiFiEventStationModeDisconnected& event) {
             Serial.print(F("WiFi disconnected, reason="));
             Serial.println(event.reason);
         });
 #endif
 }
 
-static bool connectWifiOnce(unsigned long timeoutMs)
-{
+static bool connectWifiOnce(unsigned long timeoutMs) {
     WiFi.persistent(false);
     WiFi.setAutoReconnect(true);
 #if defined(ESP8266)
     WiFi.mode(WIFI_STA);
-    WiFi.config(IPAddress(static_cast<uint32_t>(0)), IPAddress(static_cast<uint32_t>(0)), IPAddress(static_cast<uint32_t>(0)));
+    WiFi.config(
+        IPAddress(static_cast<uint32_t>(0)),
+        IPAddress(static_cast<uint32_t>(0)),
+        IPAddress(static_cast<uint32_t>(0))
+    );
     const unsigned long effectiveTimeout = timeoutMs < 45000UL ? 45000UL : timeoutMs;
 #elif defined(ESP32)
     WiFi.disconnect(true, true);
@@ -47,7 +49,11 @@ static bool connectWifiOnce(unsigned long timeoutMs)
     WiFi.begin(ssid, password);
     const unsigned long startedAt = millis();
     while (millis() - startedAt < effectiveTimeout) {
-        if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(static_cast<uint32_t>(0))) return true;
+        if (WiFi.status() == WL_CONNECTED &&
+            WiFi.localIP() != IPAddress(static_cast<uint32_t>(0))) {
+            return true;
+        }
+
         delay(250);
 #if defined(ESP8266)
         yield();
@@ -56,9 +62,10 @@ static bool connectWifiOnce(unsigned long timeoutMs)
     return false;
 }
 
-static bool connectWifi(uint8_t maxAttempts, unsigned long timeoutMs)
-{
-    if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(static_cast<uint32_t>(0))) return true;
+static bool connectWifi(uint8_t maxAttempts, unsigned long timeoutMs) {
+    if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(static_cast<uint32_t>(0))) {
+        return true;
+    }
 
     for (uint8_t attempt = 0; attempt < maxAttempts; ++attempt) {
         if (connectWifiOnce(timeoutMs)) {
@@ -66,7 +73,10 @@ static bool connectWifi(uint8_t maxAttempts, unsigned long timeoutMs)
             Serial.println(WiFi.localIP());
             return true;
         }
-        if (attempt + 1 < maxAttempts) delay(1000);
+
+        if (attempt + 1 < maxAttempts) {
+            delay(1000);
+        }
     }
 
     Serial.print(F("WiFi failed, status="));
@@ -74,27 +84,25 @@ static bool connectWifi(uint8_t maxAttempts, unsigned long timeoutMs)
     return false;
 }
 
-static void beginSerial()
-{
+static void beginSerial() {
     Serial.begin(115200);
     delay(1000);
 }
 
 // WiFi credentials - replace with your network details
-const char *ssid = "<YOUR_SSID>";
-const char *password = "<YOUR_WIFI_PASSWORD>";
+const char* ssid = "<YOUR_SSID>";
+const char* password = "<YOUR_WIFI_PASSWORD>";
 
 // Example AploCoin address - replace with your address
 #define APLO_ADDRESS "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb"
 
 Web3 web3Instance;
-Web3 *web3 = &web3Instance;
+Web3* web3 = &web3Instance;
 
 void queryAploBalance();
 void queryGaploBalance();
 
-void setup()
-{
+void setup() {
     beginSerial();
     Serial.println(F("\n\n=== AploEmbed Balance Query Example ===\n"));
     initWifi();
@@ -118,8 +126,7 @@ void setup()
     queryGaploBalance();
 }
 
-void loop()
-{
+void loop() {
     // Balance queries are typically done once or on-demand
     // You can add periodic queries here if needed
     delay(10000);
@@ -129,8 +136,7 @@ void loop()
  * Query balance in APLO (human-readable format)
  * APLO and GAplo are separate assets, each with 10^18 base units
  */
-void queryAploBalance()
-{
+void queryAploBalance() {
 
     string address = APLO_ADDRESS;
 
@@ -149,8 +155,7 @@ void queryAploBalance()
  * Query balance in Gaplo (raw blockchain units / wei equivalent)
  * This is the native unit stored on the blockchain
  */
-void queryGaploBalance()
-{
+void queryGaploBalance() {
 
     string address = APLO_ADDRESS;
 

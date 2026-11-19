@@ -37,8 +37,8 @@ enum class ReceiptState { Pending, Succeeded, Reverted };
 // Callback signs the raw 32-byte digest, WITHOUT personal-message prefix.
 // Return r[32] || low-s[32] || v[1], v=0/1. Context may be an external device.
 using DigestSigner = bool (*)(const uint8_t digest[32], uint8_t signature[65], void* context);
-using RpcTransport = std::string (*)(const std::string& method, const std::string& params,
-                                     void* context);
+using RpcTransport =
+    std::string (*)(const std::string& method, const std::string& params, void* context);
 
 // RAM only. Persistence/export is explicit and is the application's responsibility.
 class SessionKey {
@@ -98,24 +98,46 @@ public:
     SessionKeys(RpcTransport transport, void* context) : transport_(transport), context_(context) {}
 
     static SessionResult Validate(const SessionPolicy& policy, uint64_t currentBlock);
-    static SessionResult ProofHash(const SessionPolicy& policy, const std::string& owner,
-                                   const uint256_t& chainId, uint8_t digest[32]);
-    static SessionResult AcceptanceProof(const SessionPolicy& policy, const std::string& owner,
-                                         const uint256_t& chainId, SessionKey& key,
-                                         std::string& proof);
-    static SessionResult EncodeCreate(const SessionPolicy& policy, const std::string& proof,
-                                      std::string& data);
+    static SessionResult ProofHash(
+        const SessionPolicy& policy,
+        const std::string& owner,
+        const uint256_t& chainId,
+        uint8_t digest[32]
+    );
+    static SessionResult AcceptanceProof(
+        const SessionPolicy& policy,
+        const std::string& owner,
+        const uint256_t& chainId,
+        SessionKey& key,
+        std::string& proof
+    );
+    static SessionResult
+    EncodeCreate(const SessionPolicy& policy, const std::string& proof, std::string& data);
     static SessionResult EncodeRevoke(const std::string& key, std::string& data);
-    static SessionResult SignTransaction(const NativeTransaction& tx, DigestSigner signer,
-                                         void* context, const std::string& expectedSigner,
-                                         std::string& raw);
+    static SessionResult SignTransaction(
+        const NativeTransaction& tx,
+        DigestSigner signer,
+        void* context,
+        const std::string& expectedSigner,
+        std::string& raw
+    );
     // Checked envelope; result is the raw JSON value (quoted hex/object/null).
-    SessionResult Request(const std::string& method, const std::string& params,
-                          std::string& result);
-    SessionResult Call(const std::string& from, const std::string& to, const std::string& data,
-                       std::string& output, const std::string& blockTag = "latest");
-    SessionResult EstimateGas(const std::string& from, const std::string& to,
-                              const std::string& data, const uint256_t& value, uint64_t& gas);
+    SessionResult
+    Request(const std::string& method, const std::string& params, std::string& result);
+    SessionResult Call(
+        const std::string& from,
+        const std::string& to,
+        const std::string& data,
+        std::string& output,
+        const std::string& blockTag = "latest"
+    );
+    SessionResult EstimateGas(
+        const std::string& from,
+        const std::string& to,
+        const std::string& data,
+        const uint256_t& value,
+        uint64_t& gas
+    );
     SessionResult Balance(const std::string& address, uint256_t& balance); // eth_getBalance = GAplo
     SessionResult ChainId(uint256_t& chainId);
     SessionResult BlockNumber(uint64_t& block);
@@ -128,23 +150,37 @@ public:
     SessionResult Receipt(const std::string& hash, ReceiptState& state);
     // Reads chain/head/owner pending nonce; checks expiry and proof, builds zero-value owner
     // transaction.
-    SessionResult PrepareCreate(const SessionPolicy& policy, const std::string& owner,
-                                const std::string& proof, uint64_t gasLimit, NativeTransaction& tx);
-    SessionResult PrepareRevoke(const std::string& key, const std::string& owner, uint64_t gasLimit,
-                                NativeTransaction& tx);
+    SessionResult PrepareCreate(
+        const SessionPolicy& policy,
+        const std::string& owner,
+        const std::string& proof,
+        uint64_t gasLimit,
+        NativeTransaction& tx
+    );
+    SessionResult PrepareRevoke(
+        const std::string& key,
+        const std::string& owner,
+        uint64_t gasLimit,
+        NativeTransaction& tx
+    );
     // Checks live authorization, next block, pinned chain, allowed target/selector and maximum fee.
     // Caller serializes submissions for each signer; uncertain send => reconcile nonce/receipt.
-    SessionResult SendDelegated(const SessionPolicy& policy, const std::string& owner,
-                                const uint256_t& authorizedChainId, SessionKey& key,
-                                NativeTransaction tx, std::string& hash);
+    SessionResult SendDelegated(
+        const SessionPolicy& policy,
+        const std::string& owner,
+        const uint256_t& authorizedChainId,
+        SessionKey& key,
+        NativeTransaction tx,
+        std::string& hash
+    );
 
 public:
     SessionResult Rpc(const std::string& method, const std::string& params, std::string& result);
     SessionResult Quantity(const std::string& method, const std::string& params, uint256_t& value);
 
 private:
-    SessionResult OwnerTransaction(const std::string& owner, uint64_t gasLimit,
-                                   NativeTransaction& tx);
+    SessionResult
+    OwnerTransaction(const std::string& owner, uint64_t gasLimit, NativeTransaction& tx);
     RpcTransport transport_;
     void* context_;
 };

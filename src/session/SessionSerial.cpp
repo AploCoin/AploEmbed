@@ -21,12 +21,15 @@ bool SessionKey::ReadFromSerial(Stream& serial, const std::string& expectedAddre
             delay(10);
             continue;
         }
+
         if (next == '\r') {
             continue;
         }
+
         if (next == '\n') {
             break;
         }
+
         if (next == 8 || next == 127) {
             if (length != 0) {
                 line[--length] = 0;
@@ -42,8 +45,9 @@ bool SessionKey::ReadFromSerial(Stream& serial, const std::string& expectedAddre
     if (!invalid && length == sizeof(line)) {
         uint8_t secret[32];
         for (size_t i = 0; i < sizeof(secret); ++i) {
-            secret[i] = static_cast<uint8_t>((detail::hexDigit(line[2 * i]) << 4) |
-                                             detail::hexDigit(line[2 * i + 1]));
+            secret[i] = static_cast<uint8_t>(
+                (detail::hexDigit(line[2 * i]) << 4) | detail::hexDigit(line[2 * i + 1])
+            );
         }
         imported = Import(secret);
         memzero(secret, sizeof(secret));
@@ -53,6 +57,7 @@ bool SessionKey::ReadFromSerial(Stream& serial, const std::string& expectedAddre
         Clear();
         return false;
     }
+
     return true;
 }
 } // namespace aplo
