@@ -73,7 +73,7 @@ class StaticRegressionTests(unittest.TestCase):
         self.assertIn('RpcResponseBuffer response(APLO_ESP8266_RPC_RESPONSE_MAX, receiptStatusRequest)', web3)
         self.assertIn('response.Push(c);', web3)
         self.assertIn('return response.Finish();', web3)
-        self.assertIn('#else\n            result += c;\n#endif', web3)
+        self.assertIn('result.size() >= APLO_RPC_RESPONSE_MAX', web3)
 
     def test_esp8266_tls_initializes_x509_time_and_uses_generic_diagnostics(self):
         web3 = read('src/rpc/Web3.cpp')

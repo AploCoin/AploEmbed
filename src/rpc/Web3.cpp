@@ -53,7 +53,7 @@ static bool esp8266DeadlineReached(unsigned long deadline) {
     return deadline == 0 || static_cast<long>(millis() - deadline) >= 0;
 }
 
-static bool ensureEsp8266X509Time() {
+bool Web3::ensureEsp8266X509Time() {
     static bool configured = false;
     static unsigned long retryAfterMs = 0;
 
@@ -72,8 +72,8 @@ static bool ensureEsp8266X509Time() {
 
     const unsigned long startedAt = millis();
     while (time(nullptr) < APLO_VALID_X509_EPOCH && millis() - startedAt < APLO_X509_TIME_WAIT_MS) {
-        delay(250);
-        yield();
+        rpcIdle();
+        delay(1);
     }
 
     if (time(nullptr) >= APLO_VALID_X509_EPOCH) {
@@ -110,6 +110,9 @@ void Web3::initWeb3(const char* primaryRpc, const char* fallbackRpc) {
     certBundleSize = 0;
     fallbackCaCert = nullptr;
     lastTlsError = TlsError::None;
+    rpcIdleCallback = nullptr;
+    rpcIdleContext = nullptr;
+    lastEndpointUsed = RpcEndpointUsed::None;
 #if defined(ESP8266)
     esp8266TrustAnchor = nullptr;
     esp8266TrustAnchorCert = nullptr;
@@ -117,6 +120,18 @@ void Web3::initWeb3(const char* primaryRpc, const char* fallbackRpc) {
 
     parseEndpoint(primaryRpc, &primaryEndpoint);
     parseEndpoint(fallbackRpc, &fallbackEndpoint);
+}
+
+void Web3::setRpcIdleCallback(void (*callback)(void*), void* context) {
+    rpcIdleCallback = callback;
+    rpcIdleContext = context;
+}
+
+void Web3::rpcIdle() {
+    if (rpcIdleCallback) {
+        rpcIdleCallback(rpcIdleContext);
+    }
+    yield();
 }
 
 // Default constructor: uses default Aplo RPC endpoints
@@ -550,6 +565,7 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
 #else
     WiFiClientSecure scopedClient;
     client = &scopedClient;
+    client->setHandshakeTimeout(APLO_RPC_HANDSHAKE_TIMEOUT_SECONDS);
 #endif
     client->stop();
     if (!setupCert(endpoint)) {
@@ -577,17 +593,28 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
     client->setX509Time(now);
 #endif
 
-    if (!client->connect(host, endpoint.port)) {
+    rpcIdle();
+#if defined(ESP32)
+    const bool connected = client->connect(host, endpoint.port, APLO_RPC_CONNECT_TIMEOUT_MS);
+#else
+    const bool connected = client->connect(host, endpoint.port);
+#endif
+    rpcIdle();
+    if (!connected) {
         lastTlsError = TlsError::ConnectionFailed;
         APLO_RPC_LOG("Unable to connect to RPC host");
 #if defined(ESP8266)
         endpoint.retryAfterMs = millis() + APLO_RPC_FAILURE_COOLDOWN_MS;
 #endif
         client->stop();
-        delay(100);
         client = nullptr;
         return "";
     }
+#if defined(ESP32)
+    // connect(timeout) sets the socket timeout as well; reduce it only after
+    // connecting. ESP32 setTimeout takes seconds, connect(timeout) takes ms.
+    client->setTimeout(1);
+#endif
 #if defined(ESP8266)
     if (!client->getMFLNStatus()) {
         lastTlsError = TlsError::FragmentLength;
@@ -618,9 +645,10 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
     bool headersComplete = false;
     uint32_t headerState = 0;
     unsigned headerBytes = 0;
-    unsigned long headerDeadline = millis() + 10000;
+    const uint32_t responseStartedAt = millis();
     while ((client->connected() || client->available() > 0) && headerBytes < 2048 &&
-           millis() < headerDeadline) {
+           static_cast<uint32_t>(millis() - responseStartedAt) < APLO_RPC_RESPONSE_TIMEOUT_MS) {
+        rpcIdle();
         if (client->available() <= 0) {
             delay(1);
             continue;
@@ -628,6 +656,7 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
 
         const int next = client->read();
         if (next < 0) {
+            delay(1);
             continue;
         }
 
@@ -650,9 +679,19 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
         return "";
     }
 
-    unsigned long deadline = millis() + 10000;
+    uint32_t lastBodyByteAt = millis();
+    bool bodyTimedOut = false;
+    bool bodyTooLarge = false;
     while (client->connected() || client->available() > 0) {
-        while (client->available() > 0) {
+        rpcIdle();
+        const uint32_t now = millis();
+        if (static_cast<uint32_t>(now - responseStartedAt) >= APLO_RPC_RESPONSE_TIMEOUT_MS ||
+            static_cast<uint32_t>(now - lastBodyByteAt) >= APLO_RPC_READ_IDLE_TIMEOUT_MS) {
+            bodyTimedOut = true;
+            break;
+        }
+        // Never let a peer keeping available() positive monopolize the loop.
+        for (unsigned batch = 0; batch < 64 && client->available() > 0; ++batch) {
             const int next = client->read();
             if (next < 0) {
                 break;
@@ -662,11 +701,15 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
 #if defined(ESP8266)
             response.Push(c);
 #else
+            if (result.size() >= APLO_RPC_RESPONSE_MAX) {
+                bodyTooLarge = true;
+                break;
+            }
             result += c;
 #endif
-            deadline = millis() + 1000;
+            lastBodyByteAt = millis();
         }
-        if (millis() > deadline) {
+        if (bodyTooLarge) {
             break;
         }
 
@@ -674,6 +717,14 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
     }
     client->stop();
     client = nullptr;
+
+    if (bodyTimedOut || bodyTooLarge) {
+        APLO_RPC_LOG("HTTP response timed out or exceeds buffer");
+#if defined(ESP8266)
+        endpoint.retryAfterMs = millis() + APLO_RPC_FAILURE_COOLDOWN_MS;
+#endif
+        return "";
+    }
 
 #if defined(ESP8266)
     if (response.Overflow() && !receiptStatusRequest) {
@@ -1002,9 +1053,11 @@ long long Web3::getChainId() const {
 // -------------------------------
 
 string Web3::execWithFailover(const string* data) {
+    lastEndpointUsed = RpcEndpointUsed::None;
     string result = exec(data, primaryEndpoint);
 
     if (!result.empty()) {
+        lastEndpointUsed = RpcEndpointUsed::Primary;
         return result;
     }
 
@@ -1013,6 +1066,7 @@ string Web3::execWithFailover(const string* data) {
         result = exec(data, fallbackEndpoint);
 
         if (!result.empty()) {
+            lastEndpointUsed = RpcEndpointUsed::Fallback;
             APLO_RPC_LOG("Fallback RPC succeeded");
             return result;
         }

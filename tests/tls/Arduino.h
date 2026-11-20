@@ -27,8 +27,19 @@ struct NativeSerial {
     }
 };
 static NativeSerial Serial;
+inline uint32_t& nativeMillisTicks() {
+    static uint32_t ticks = 0;
+    return ticks;
+}
+inline unsigned& nativeMillisDivisor() {
+    static unsigned divisor = 1;
+    return divisor;
+}
 inline unsigned long millis() {
-    static unsigned long ticks = 0;
-    return ++ticks;
+    static unsigned calls = 0;
+    if (++calls % nativeMillisDivisor() == 0) {
+        ++nativeMillisTicks();
+    }
+    return nativeMillisTicks();
 }
 inline void delay(unsigned long) {}

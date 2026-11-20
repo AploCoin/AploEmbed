@@ -7,6 +7,7 @@
 #include <unistd.h>
 unsigned liveAnchors = 0, maxAnchors = 0;
 bool tlsMfln = true;
+std::string transportScenario;
 void WiFiClientSecure::receive() {
     if (received_ || !ssl_) {
         return;
@@ -19,6 +20,9 @@ void WiFiClientSecure::receive() {
     int count;
     while ((count = SSL_read(ssl_, block, sizeof(block))) > 0) {
         incoming_.append(block, count);
+    }
+    if (transportScenario == "oversized") {
+        incoming_ = "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n" + std::string(40000, 'x');
     }
 }
 WiFiClientSecure::~WiFiClientSecure() {
@@ -77,13 +81,27 @@ void WiFiClientSecure::stop() {
 }
 bool WiFiClientSecure::connected() {
     receive();
+    if (transportScenario == "stalled-body" || transportScenario == "negative-read" ||
+        transportScenario == "continuous-body") {
+        return true;
+    }
     return position_ < incoming_.size();
 }
 int WiFiClientSecure::available() {
     receive();
+    if (transportScenario == "continuous-body" && position_ >= incoming_.size()) {
+        return 1;
+    }
     return position_ < incoming_.size() ? int(incoming_.size() - position_) : -1;
 }
 int WiFiClientSecure::read() {
+    if (transportScenario == "continuous-body" && position_ >= incoming_.size()) {
+        return 'x';
+    }
+    if (transportScenario == "negative-read" &&
+        position_ >= incoming_.find("\r\n\r\n") + 4) {
+        return -1;
+    }
     return position_ < incoming_.size() ? static_cast<unsigned char>(incoming_[position_++]) : -1;
 }
 void WiFiClientSecure::print(const char* value) {

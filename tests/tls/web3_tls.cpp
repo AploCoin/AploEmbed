@@ -7,6 +7,9 @@
 #include <ctime>
 std::vector<std::string> tlsAttempts;
 static time_t verificationTime;
+static void countIdle(void* context) {
+    ++*static_cast<unsigned*>(context);
+}
 
 extern "C" time_t time(time_t* output) {
     if (output) {
@@ -65,8 +68,13 @@ int main(int argc, char** argv) {
                                              .c_str()));
     }
     Web3 rpc(argv[2], argv[5]);
+    unsigned idleCalls = 0;
+    rpc.setRpcIdleCallback(countIdle, &idleCalls);
+    assert(rpc.lastRpcEndpoint() == Web3::RpcEndpointUsed::None);
     if (mode == "valid" || mode == "rotation" || mode == "bad-name" || mode == "expired" ||
-        mode == "no-time" || mode == "mfln" || mode == "invalid-root") {
+        mode == "no-time" || mode == "mfln" || mode == "invalid-root" ||
+        mode == "stalled-body" || mode == "negative-read" || mode == "oversized" ||
+        mode == "continuous-body") {
         rpc.setCertificate(root.c_str(), other.c_str());
     } else if (mode == "foreign") {
         rpc.setCertificate(other.c_str(), root.c_str());
@@ -85,10 +93,28 @@ int main(int argc, char** argv) {
     if (mode == "no-time") {
         verificationTime = 0;
     }
+    if (mode == "stalled-body" || mode == "negative-read" || mode == "oversized" ||
+        mode == "continuous-body") {
+        transportScenario = mode;
+        // Cross the actual 32-bit Arduino millis rollover during a failed read.
+        nativeMillisTicks() = UINT32_MAX - 400;
+        if (mode == "oversized") {
+            nativeMillisDivisor() = 16;
+        }
+    }
     const std::string response = rpc.RpcRequest("eth_chainId", "[]");
     const bool success = std::string(argv[6]) == "ok";
     assert((response == "{\"jsonrpc\":\"2.0\",\"id\":0,\"result\":\"0x539\"}") == success);
     assert(tlsAttempts.size() == std::strtoul(argv[7], nullptr, 10));
+    if (success) {
+        assert(idleCalls > 0);
+        const bool fallbackUsed = tlsAttempts.size() > 1 ||
+            (mode == "profile" && std::string(argv[2]).find("unknown.test") != std::string::npos);
+        assert(rpc.lastRpcEndpoint() == (!fallbackUsed
+            ? Web3::RpcEndpointUsed::Primary : Web3::RpcEndpointUsed::Fallback));
+    } else {
+        assert(rpc.lastRpcEndpoint() == Web3::RpcEndpointUsed::None);
+    }
     if (mode == "invalid-root") {
         assert(rpc.tlsError() == Web3::TlsError::InvalidTrust);
     }

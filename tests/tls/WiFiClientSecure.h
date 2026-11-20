@@ -4,6 +4,7 @@
 #include <vector>
 #include "BearSSLTest.h"
 extern bool tlsMfln;
+extern std::string transportScenario;
 extern std::vector<std::string> tlsAttempts;
 struct ssl_ctx_st;
 struct ssl_st;
@@ -24,6 +25,8 @@ public:
         pem_ = anchor ? anchor->pem : nullptr;
     }
     void setBufferSizes(int, int) {}
+    void setTimeout(unsigned long) {}
+    void setHandshakeTimeout(unsigned long) {}
     void setX509Time(long) {}
     bool getMFLNStatus() const {
         return tlsMfln;
@@ -32,6 +35,7 @@ public:
         return -1;
     }
     bool connect(const char* host, unsigned port);
+    bool connect(const char* host, unsigned port, unsigned long) { return connect(host, port); }
     void stop();
     bool connected();
     int available();

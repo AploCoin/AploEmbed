@@ -31,6 +31,7 @@ SessionKey::~SessionKey() {
 void SessionKey::Clear() {
     memzero(secret_, 32);
     valid_ = false;
+    address_.clear();
 }
 
 bool SessionKey::Import(const uint8_t secret[32]) {
@@ -40,6 +41,7 @@ bool SessionKey::Import(const uint8_t secret[32]) {
     }
 
     memcpy(secret_, secret, 32);
+    deriveAddress();
     valid_ = true;
     return true;
 }
@@ -62,6 +64,7 @@ bool SessionKey::Generate() {
         }
 
         if (isValidScalar(secret_)) {
+            deriveAddress();
             valid_ = true;
             return true;
         }
@@ -76,14 +79,18 @@ static string publicAddress(const uint8_t publicKey[65]) {
     return encodeHex(hash + 12, 20);
 }
 
-string SessionKey::Address() const {
-    if (!valid_) {
-        return "";
-    }
-
+void SessionKey::deriveAddress() {
     uint8_t publicKey[65];
     ecdsa_get_public_key65(&secp256k1, secret_, publicKey);
-    return publicAddress(publicKey);
+    address_ = publicAddress(publicKey);
+}
+
+string SessionKey::Address() const {
+    return address_;
+}
+
+bool SessionKey::MatchesAddress(const std::string& address) const {
+    return valid_ && address_ == address;
 }
 
 bool SessionKey::SignDigest(const uint8_t digest[32], uint8_t signature[65], void* context) {

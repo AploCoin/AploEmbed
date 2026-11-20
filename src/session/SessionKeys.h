@@ -54,11 +54,15 @@ public:
     bool Export(uint8_t secret[32]) const;
     void Clear();
     std::string Address() const;
+    bool MatchesAddress(const std::string& address) const;
     static bool SignDigest(const uint8_t digest[32], uint8_t signature[65], void* context);
 
 private:
     uint8_t secret_[32];
     bool valid_;
+    std::string address_;
+
+    void deriveAddress();
 };
 
 struct SessionPolicy {

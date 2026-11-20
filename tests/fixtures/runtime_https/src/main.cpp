@@ -5,8 +5,11 @@
 static const char certificate[] PROGMEM = "invalid test PEM";
 static Web3 rpc("https://rpc.example.invalid/rpc", "https://fallback.example.invalid/rpc");
 static aplo::SessionKeys sessions(rpc);
+static void idle(void*) { yield(); }
 
 void setup() {
+    rpc.setRpcIdleCallback(idle, nullptr);
+    (void)rpc.lastRpcEndpoint();
     rpc.setCertificate(certificate, certificate);
     // Invalid synthetic input prevents this probe from submitting a request
     // even if someone explicitly runs it; it still links the new API surface.

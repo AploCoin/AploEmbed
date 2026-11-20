@@ -183,9 +183,12 @@ def main():
                     str(int(time.time())),
                 ],
                 check=True,
+                timeout=15,
             )
 
         case("valid", good.url, custom.url, True, 1)
+        for scenario in ("stalled-body", "negative-read", "oversized", "continuous-body"):
+            case(scenario, good.url, "", False, 1)
         case("rotation", rotated.url, custom.url, True, 1)
         # Primary root deliberately wrong, fallback has its own correct root.
         case("foreign", good.url, rotated.url, True)

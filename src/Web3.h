@@ -91,6 +91,15 @@ public:
         return lastTlsError;
     }
 
+    // Called from Web3-owned waits and between bounded read batches. Keep it
+    // short: do not call Web3/TLS, change trust, or destroy this object here.
+    // Core DNS/connect/handshake/write calls remain synchronous; this callback
+    // is not a cancellation hook and cannot run inside those calls.
+    void setRpcIdleCallback(void (*callback)(void*), void* context = nullptr);
+    enum class RpcEndpointUsed { None, Primary, Fallback };
+    // Endpoint of the last accepted response, reset to None when an RPC starts.
+    RpcEndpointUsed lastRpcEndpoint() const { return lastEndpointUsed; }
+
     // Raw JSON-RPC response; used by exact-width native session API.
     std::string RpcRequest(const std::string& method, const std::string& params);
     std::string Web3ClientVersion();
@@ -189,6 +198,10 @@ private:
     static bool parseEndpoint(const char* url, RpcEndpoint* endpoint, bool requireHttps = false);
     bool setupCert(const RpcEndpoint& endpoint);
     void initWeb3(const char* primaryRpc, const char* fallbackRpc);
+    void rpcIdle();
+#if defined(ESP8266)
+    bool ensureEsp8266X509Time();
+#endif
 #if defined(ESP8266)
     void clearEsp8266Trust();
 #endif
@@ -213,6 +226,9 @@ private:
     size_t certBundleSize;
     const char* fallbackCaCert;
     TlsError lastTlsError;
+    void (*rpcIdleCallback)(void*);
+    void* rpcIdleContext;
+    RpcEndpointUsed lastEndpointUsed;
 #if defined(ESP8266)
     BearSSL::X509List* esp8266TrustAnchor;
     const char* esp8266TrustAnchorCert;
