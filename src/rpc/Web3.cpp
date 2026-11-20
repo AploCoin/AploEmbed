@@ -24,6 +24,14 @@
 #include <cstdio>
 #include <ctime>
 #include <new>
+#if defined(ESP8266)
+#include <Schedule.h>
+#endif
+#if defined(ESP32) && APLO_RPC_ESP32_PROGRESS_WORKER
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/semphr.h>
+#endif
 
 #ifdef APLO_TRUST_PROFILE_HEADER
 #include APLO_TRUST_PROFILE_HEADER
@@ -33,6 +41,61 @@
 // Helper function to initialize Web3 instance
 using std::string;
 using std::vector;
+
+namespace {
+// One synchronous transport service, with no queued references to a Web3 or
+// application object. The core entry has static lifetime; only an active RPC
+// temporarily lends its callback/context. Never call application code in ISR.
+struct RpcProgressService {
+    void (*callback)(void*) = nullptr;
+    void* context = nullptr;
+    bool executing = false;
+    bool active = false;
+#if defined(ESP32) && APLO_RPC_ESP32_PROGRESS_WORKER
+    void* callbackTask = nullptr;
+#endif
+
+    void poll() {
+        if (callback && !executing) {
+            executing = true;
+            callback(context);
+            executing = false;
+        }
+    }
+};
+
+RpcProgressService rpcProgressService;
+
+struct RpcProgressScope {
+    RpcProgressScope(void (*callback)(void*), void* context) {
+        rpcProgressService.active = true;
+        rpcProgressService.context = context;
+        rpcProgressService.callback = callback;
+    }
+
+    ~RpcProgressScope() {
+        rpcProgressService.callback = nullptr;
+        rpcProgressService.context = nullptr;
+        rpcProgressService.active = false;
+    }
+};
+
+bool responseExpired(uint32_t startedAt) {
+    return static_cast<uint32_t>(millis() - startedAt) >= APLO_RPC_RESPONSE_TIMEOUT_MS;
+}
+} // namespace
+
+#if defined(ESP32) && APLO_RPC_ESP32_PROGRESS_WORKER && APLO_RPC_SERIAL_LOGS
+// Strict progress owns application Serial on the caller. Do not interleave
+// optional SDK diagnostic output from the TLS worker with that protocol.
+#undef APLO_RPC_LOG
+#define APLO_RPC_LOG(message)                                                                      \
+    APLO_RPC_LOG_WHEN(                                                                              \
+        !rpcProgressService.callbackTask ||                                                        \
+            rpcProgressService.callbackTask == xTaskGetCurrentTaskHandle(),                         \
+        message                                                                                    \
+    )
+#endif
 
 #if defined(ESP8266)
 #define APLO_RPC_FAILURE_COOLDOWN_MS 30000UL
@@ -112,6 +175,9 @@ void Web3::initWeb3(const char* primaryRpc, const char* fallbackRpc) {
     lastTlsError = TlsError::None;
     rpcIdleCallback = nullptr;
     rpcIdleContext = nullptr;
+    rpcProgressCallback = nullptr;
+    rpcProgressContext = nullptr;
+    rpcExecuting = false;
     lastEndpointUsed = RpcEndpointUsed::None;
 #if defined(ESP8266)
     esp8266TrustAnchor = nullptr;
@@ -127,7 +193,39 @@ void Web3::setRpcIdleCallback(void (*callback)(void*), void* context) {
     rpcIdleContext = context;
 }
 
+bool Web3::setRpcProgressCallback(void (*callback)(void*), void* context) {
+#if defined(ESP8266)
+    static bool scheduled = false;
+    if (callback && !scheduled) {
+        // Schedule.h guarantees CONT-stack execution, including inside core
+        // yield(). Unlike schedule_function(), this runs before loop returns.
+        scheduled = schedule_recurrent_function_us(
+            []() {
+                rpcProgressService.poll();
+                return true;
+            },
+            1000
+        );
+        if (!scheduled) {
+            return false;
+        }
+    }
+#endif
+    rpcProgressCallback = callback;
+    rpcProgressContext = context;
+    return true;
+}
+
 void Web3::rpcIdle() {
+#if defined(ESP32) && APLO_RPC_ESP32_PROGRESS_WORKER
+    if (rpcProgressService.callbackTask &&
+        rpcProgressService.callbackTask != xTaskGetCurrentTaskHandle()) {
+        // The TLS worker never touches Serial or application callbacks/state.
+        yield();
+        return;
+    }
+#endif
+    rpcProgressService.poll();
     if (rpcIdleCallback) {
         rpcIdleCallback(rpcIdleContext);
     }
@@ -626,26 +724,37 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
     }
 #endif
 
+    const uint32_t responseStartedAt = millis();
     char contentLength[24];
     snprintf(contentLength, sizeof(contentLength), "%lu", static_cast<unsigned long>(data->size()));
 
-    client->print("POST ");
-    client->print(endpoint.path.c_str());
-    client->println(" HTTP/1.1");
-    client->print("Host: ");
-    client->println(host);
-    client->println("Content-Type: application/json");
-    client->println("Connection: close");
-    client->print("Content-Length: ");
-    client->println(contentLength);
-    client->println();
-    client->print(data->c_str());
+    const char* requestParts[] = {
+        "POST ",
+        endpoint.path.c_str(),
+        " HTTP/1.1\r\nHost: ",
+        host,
+        "\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: ",
+        contentLength,
+        "\r\n\r\n",
+        data->c_str()
+    };
+    for (const char* part : requestParts) {
+        client->print(part);
+        rpcIdle();
+        if (responseExpired(responseStartedAt)) {
+#if defined(ESP8266)
+            endpoint.retryAfterMs = millis() + APLO_RPC_FAILURE_COOLDOWN_MS;
+#endif
+            client->stop();
+            client = nullptr;
+            return "";
+        }
+    }
 
     // Consume headers without temporary Arduino String allocations.
     bool headersComplete = false;
     uint32_t headerState = 0;
     unsigned headerBytes = 0;
-    const uint32_t responseStartedAt = millis();
     while ((client->connected() || client->available() > 0) && headerBytes < 2048 &&
            static_cast<uint32_t>(millis() - responseStartedAt) < APLO_RPC_RESPONSE_TIMEOUT_MS) {
         rpcIdle();
@@ -655,6 +764,9 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
         }
 
         const int next = client->read();
+        if (responseExpired(responseStartedAt)) {
+            break;
+        }
         if (next < 0) {
             delay(1);
             continue;
@@ -693,6 +805,11 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
         // Never let a peer keeping available() positive monopolize the loop.
         for (unsigned batch = 0; batch < 64 && client->available() > 0; ++batch) {
             const int next = client->read();
+            if (responseExpired(responseStartedAt) ||
+                static_cast<uint32_t>(millis() - lastBodyByteAt) >= APLO_RPC_READ_IDLE_TIMEOUT_MS) {
+                bodyTimedOut = true;
+                break;
+            }
             if (next < 0) {
                 break;
             }
@@ -709,12 +826,16 @@ string Web3::exec(const string* data, RpcEndpoint& endpoint) {
 #endif
             lastBodyByteAt = millis();
         }
-        if (bodyTooLarge) {
+        if (bodyTooLarge || bodyTimedOut) {
             break;
         }
 
         delay(1);
     }
+    // connected()/available()/read() can themselves consume time. A peer
+    // closing immediately after a late final byte cannot turn timeout into
+    // success by skipping the next loop iteration.
+    bodyTimedOut = bodyTimedOut || responseExpired(responseStartedAt);
     client->stop();
     client = nullptr;
 
@@ -1053,6 +1174,71 @@ long long Web3::getChainId() const {
 // -------------------------------
 
 string Web3::execWithFailover(const string* data) {
+    // Also reject recursive calls from either callback and another instance
+    // while its shared ESP8266 transport/service is in use.
+    if (rpcExecuting || rpcProgressService.active) {
+        return "";
+    }
+
+    struct ExecutionScope {
+        bool& executing;
+
+        explicit ExecutionScope(bool& value) : executing(value) {
+            executing = true;
+        }
+
+        ~ExecutionScope() {
+            executing = false;
+        }
+    } executing(rpcExecuting);
+
+    RpcProgressScope progress(rpcProgressCallback, rpcProgressContext);
+#if defined(ESP32) && APLO_RPC_ESP32_PROGRESS_WORKER
+    if (rpcProgressCallback) {
+        struct Request {
+            Web3* owner;
+            const string* data;
+            string result;
+            SemaphoreHandle_t complete;
+        } request = {this, data, string(), xSemaphoreCreateBinary()};
+
+        if (request.complete) {
+            rpcIdle();
+            rpcProgressService.callbackTask = xTaskGetCurrentTaskHandle();
+            const BaseType_t started = xTaskCreate(
+                [](void* argument) {
+                    auto* request = static_cast<Request*>(argument);
+                    request->result = request->owner->execWithFailoverImpl(request->data);
+                    // Nothing accesses request after publishing completion. The
+                    // caller owns its stack/data until this semaphore is taken.
+                    xSemaphoreGive(request->complete);
+                    vTaskDelete(nullptr);
+                },
+                "aplo-rpc",
+                APLO_RPC_ESP32_WORKER_STACK_BYTES,
+                &request,
+                tskIDLE_PRIORITY + 1,
+                nullptr
+            );
+            if (started == pdPASS) {
+                while (xSemaphoreTake(request.complete, 1) != pdTRUE) {
+                    rpcIdle();
+                }
+                rpcProgressService.callbackTask = nullptr;
+                vSemaphoreDelete(request.complete);
+                return request.result;
+            }
+            rpcProgressService.callbackTask = nullptr;
+            vSemaphoreDelete(request.complete);
+        }
+        // Allocation failed before any TLS/RPC work: safe single synchronous
+        // attempt, with no replay and the normal owned-wait callbacks.
+    }
+#endif
+    return execWithFailoverImpl(data);
+}
+
+string Web3::execWithFailoverImpl(const string* data) {
     lastEndpointUsed = RpcEndpointUsed::None;
     string result = exec(data, primaryEndpoint);
 

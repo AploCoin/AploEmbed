@@ -52,7 +52,8 @@ class StaticRegressionTests(unittest.TestCase):
 
     def test_esp32_and_http_runtime_regressions(self):
         web3 = read('src/rpc/Web3.cpp')
-        self.assertIn('client->print(data->c_str())', web3)
+        self.assertIn('data->c_str()', web3)
+        self.assertIn('client->print(part)', web3)
         self.assertIn('headerState == 0x0d0a0d0aUL', web3)
         self.assertIn('node.rfind("https://", 0)', web3)
         self.assertIn('uint256_t zeroValue = 0;', web3)

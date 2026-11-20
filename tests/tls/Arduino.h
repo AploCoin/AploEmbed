@@ -5,9 +5,21 @@
 #define PROGMEM
 #if defined(ESP8266)
 #include "pgmspace.h"
+#include "Schedule.h"
 #endif
-inline void yield() {}
+#if defined(ESP32)
+#include <freertos/task.h>
+#endif
+inline void yield() {
+#if defined(ESP8266)
+    nativeRunRecurrent();
+#elif defined(ESP32)
+    std::this_thread::yield();
+#endif
+}
+
 inline void configTime(int, int, const char*, const char*) {}
+
 struct NativeSerial {
     template <typename T> void println(T) {
         ++writes();
@@ -26,15 +38,19 @@ struct NativeSerial {
         return count;
     }
 };
+
 static NativeSerial Serial;
+
 inline uint32_t& nativeMillisTicks() {
     static uint32_t ticks = 0;
     return ticks;
 }
+
 inline unsigned& nativeMillisDivisor() {
-    static unsigned divisor = 1;
+    static unsigned divisor = 4;
     return divisor;
 }
+
 inline unsigned long millis() {
     static unsigned calls = 0;
     if (++calls % nativeMillisDivisor() == 0) {
@@ -42,4 +58,5 @@ inline unsigned long millis() {
     }
     return nativeMillisTicks();
 }
+
 inline void delay(unsigned long) {}

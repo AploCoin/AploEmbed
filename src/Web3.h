@@ -96,9 +96,20 @@ public:
     // Core DNS/connect/handshake/write calls remain synchronous; this callback
     // is not a cancellation hook and cannot run inside those calls.
     void setRpcIdleCallback(void (*callback)(void*), void* context = nullptr);
+    // Strictly nonblocking service: no yield/delay, blocking Serial writes,
+    // flash writes, or Web3/TLS calls. ESP8266 also calls this from the public
+    // core recurrent scheduler during DNS/connect/handshake/write yields.
+    // ESP32 optionally lends TLS to a worker and keeps callbacks on the caller
+    // task; callbacks must not read this object's changing transport state.
+    // Returns false if the ESP8266
+    // scheduler could not allocate its one shared service entry. nullptr clears.
+    bool setRpcProgressCallback(void (*callback)(void*), void* context = nullptr);
     enum class RpcEndpointUsed { None, Primary, Fallback };
+
     // Endpoint of the last accepted response, reset to None when an RPC starts.
-    RpcEndpointUsed lastRpcEndpoint() const { return lastEndpointUsed; }
+    RpcEndpointUsed lastRpcEndpoint() const {
+        return lastEndpointUsed;
+    }
 
     // Raw JSON-RPC response; used by exact-width native session API.
     std::string RpcRequest(const std::string& method, const std::string& params);
@@ -194,6 +205,7 @@ private:
 
     std::string exec(const std::string* data, RpcEndpoint& endpoint);
     std::string execWithFailover(const std::string* data); // RPC failover wrapper
+    std::string execWithFailoverImpl(const std::string* data);
     std::string generateJson(const std::string* method, const std::string* params);
     static bool parseEndpoint(const char* url, RpcEndpoint* endpoint, bool requireHttps = false);
     bool setupCert(const RpcEndpoint& endpoint);
@@ -228,6 +240,9 @@ private:
     TlsError lastTlsError;
     void (*rpcIdleCallback)(void*);
     void* rpcIdleContext;
+    void (*rpcProgressCallback)(void*);
+    void* rpcProgressContext;
+    bool rpcExecuting;
     RpcEndpointUsed lastEndpointUsed;
 #if defined(ESP8266)
     BearSSL::X509List* esp8266TrustAnchor;

@@ -29,4 +29,12 @@
 #ifndef APLO_RPC_RESPONSE_MAX
 #define APLO_RPC_RESPONSE_MAX 32768UL
 #endif
+// ESP32: keep strict progress on the calling task while an optional task owns
+// synchronous core TLS. No worker is started without a progress callback.
+#ifndef APLO_RPC_ESP32_PROGRESS_WORKER
+#define APLO_RPC_ESP32_PROGRESS_WORKER 1
+#endif
+#ifndef APLO_RPC_ESP32_WORKER_STACK_BYTES
+#define APLO_RPC_ESP32_WORKER_STACK_BYTES 12288UL
+#endif
 #endif

@@ -25,10 +25,11 @@ profile = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(profile)
 OPENSSL = Path(os.environ.get("OPENSSL_PREFIX", "/opt/homebrew/opt/openssl@3"))
 MBEDTLS = Path(os.environ.get("MBEDTLS_PREFIX", "/opt/homebrew/opt/mbedtls@3"))
+SANITIZERS = os.environ.get("APLO_TLS_SANITIZERS", "address,undefined")
 
 
 class Server:
-    def __init__(self, pair):
+    def __init__(self, pair, handshake_delay=0):
         self.context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         self.context.minimum_version = ssl.TLSVersion.TLSv1_2
         self.context.load_cert_chain(pair[1], pair[0])
@@ -38,6 +39,7 @@ class Server:
         self.port = self.listener.getsockname()[1]
         self.url = "https://rpc.test:%d/rpc" % self.port
         self.requests = 0
+        self.handshake_delay = handshake_delay
         threading.Thread(target=self.serve, daemon=True).start()
 
     def serve(self):
@@ -45,6 +47,7 @@ class Server:
             try:
                 connection, _ = self.listener.accept()
                 connection.settimeout(5)
+                time.sleep(self.handshake_delay)
                 with self.context.wrap_socket(connection, server_side=True) as peer:
                     request = peer.recv(8192)
                     if request:
@@ -71,7 +74,7 @@ def build(work, generated=None):
     flags = [
         "-O1",
         "-g",
-        "-fsanitize=address,undefined",
+        "-fsanitize=" + SANITIZERS,
         "-fno-omit-frame-pointer",
         "-DUSE_PRECOMPUTED_CP=0",
         "-ffunction-sections",
@@ -90,6 +93,8 @@ def build(work, generated=None):
         flags.extend(["-I" + str(bearssl / "inc"), "-I" + str(bearssl / "src")])
     else:
         flags.append("-I" + str(MBEDTLS / "include"))
+    if "--esp32-worker" in sys.argv:
+        flags.extend(["-DESP32", "-pthread"])
     if "--quiet" in sys.argv:
         flags.append("-DAPLO_RPC_SERIAL_LOGS=0")
     if generated:
@@ -140,12 +145,13 @@ def build(work, generated=None):
     subprocess.run(
         [
             "c++",
-            "-fsanitize=address,undefined",
+            "-fsanitize=" + SANITIZERS,
             *objects,
             "-Wl,-dead_strip" if sys.platform == "darwin" else "-Wl,--gc-sections",
             "-L" + str(OPENSSL / "lib"),
             "-lssl",
             "-lcrypto",
+            *(["-pthread"] if "--esp32-worker" in sys.argv else []),
             *([] if "--esp8266" in sys.argv else [
                 "-L" + str(MBEDTLS / "lib"), "-lmbedx509", "-lmbedcrypto"
             ]),
@@ -187,8 +193,17 @@ def main():
             )
 
         case("valid", good.url, custom.url, True, 1)
-        for scenario in ("stalled-body", "negative-read", "oversized", "continuous-body"):
+        for scenario in ("stalled-body", "negative-read", "oversized", "continuous-body",
+                         "late-header", "late-body-final", "late-body-idle", "write-delay"):
             case(scenario, good.url, "", False, 1)
+        case("late-primary", good.url, custom.url, True, 2)
+        case("schedule-failure", good.url, "", True, 1)
+        case("no-progress", good.url, "", True, 1)
+        if "--esp32-worker" in sys.argv:
+            for scenario in ("worker-stall", "worker-allocation-failure", "worker-semaphore-failure"):
+                case(scenario, good.url, "", True, 1)
+            delayed = Server(leaf(work, "delayed", ca), handshake_delay=0.1)
+            case("worker-delayed-handshake", delayed.url, "", True, 1)
         case("rotation", rotated.url, custom.url, True, 1)
         # Primary root deliberately wrong, fallback has its own correct root.
         case("foreign", good.url, rotated.url, True)

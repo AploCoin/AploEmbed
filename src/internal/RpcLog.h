@@ -3,10 +3,16 @@
 #include "../AploTlsConfig.h"
 #include <Arduino.h>
 #if APLO_RPC_SERIAL_LOGS
-#define APLO_RPC_LOG(message) Serial.println(F(message))
+#define APLO_RPC_LOG_WHEN(condition, message)                                                       \
+    do {                                                                                           \
+        if (condition) {                                                                           \
+            Serial.println(F(message));                                                            \
+        }                                                                                          \
+    } while (0)
 #else
-#define APLO_RPC_LOG(message)                                                                      \
+#define APLO_RPC_LOG_WHEN(condition, message)                                                       \
     do {                                                                                           \
     } while (0)
 #endif
+#define APLO_RPC_LOG(message) APLO_RPC_LOG_WHEN(true, message)
 #endif

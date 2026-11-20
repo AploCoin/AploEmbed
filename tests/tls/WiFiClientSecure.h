@@ -2,12 +2,15 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <atomic>
 #include "BearSSLTest.h"
 extern bool tlsMfln;
 extern std::string transportScenario;
+extern std::atomic<const char*> transportPhase;
 extern std::vector<std::string> tlsAttempts;
 struct ssl_ctx_st;
 struct ssl_st;
+
 class WiFiClientSecure {
     ssl_ctx_st* context_ = nullptr;
     ssl_st* ssl_ = nullptr;
@@ -21,21 +24,33 @@ class WiFiClientSecure {
 public:
     ~WiFiClientSecure();
     void setCACert(const char* pem);
+
     void setTrustAnchors(const BearSSL::X509List* anchor) {
         pem_ = anchor ? anchor->pem : nullptr;
     }
+
     void setBufferSizes(int, int) {}
+
     void setTimeout(unsigned long) {}
+
     void setHandshakeTimeout(unsigned long) {}
+
     void setX509Time(long) {}
+
     bool getMFLNStatus() const {
         return tlsMfln;
     }
+
     int getLastSSLError(char*, size_t) {
         return -1;
     }
+
     bool connect(const char* host, unsigned port);
-    bool connect(const char* host, unsigned port, unsigned long) { return connect(host, port); }
+
+    bool connect(const char* host, unsigned port, unsigned long) {
+        return connect(host, port);
+    }
+
     void stop();
     bool connected();
     int available();

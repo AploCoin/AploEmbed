@@ -1,5 +1,6 @@
 // Host boundary only. This does not emulate/certify ESP TLS implementations.
 #include "WiFiClientSecure.h"
+#include "Arduino.h"
 #include <openssl/ssl.h>
 #include <openssl/pem.h>
 #include <arpa/inet.h>
@@ -8,6 +9,8 @@
 unsigned liveAnchors = 0, maxAnchors = 0;
 bool tlsMfln = true;
 std::string transportScenario;
+std::atomic<const char*> transportPhase("idle");
+
 void WiFiClientSecure::receive() {
     if (received_ || !ssl_) {
         return;
@@ -25,14 +28,36 @@ void WiFiClientSecure::receive() {
         incoming_ = "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n" + std::string(40000, 'x');
     }
 }
+
 WiFiClientSecure::~WiFiClientSecure() {
     stop();
 }
+
 void WiFiClientSecure::setCACert(const char* pem) {
     pem_ = pem;
 }
+
 bool WiFiClientSecure::connect(const char* host, unsigned port) {
     tlsAttempts.push_back(host);
+
+    struct ConnectPhase {
+        ConnectPhase() {
+            transportPhase = "connect";
+        }
+
+        ~ConnectPhase() {
+            transportPhase = "idle";
+        }
+    } phase;
+#if defined(ESP32)
+    if (transportScenario == "worker-stall") {
+        std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    }
+#endif
+    // Synthetic core yields, not a claim that OpenSSL is ESP BearSSL.
+    for (unsigned tick = 0; tick < 100; ++tick) {
+        yield();
+    }
     context_ = SSL_CTX_new(TLS_client_method());
     SSL_CTX_set_verify(context_, SSL_VERIFY_PEER, nullptr);
     BIO* input = BIO_new_mem_buf(pem_, -1);
@@ -61,6 +86,7 @@ bool WiFiClientSecure::connect(const char* host, unsigned port) {
     SSL_set_fd(ssl_, socket_);
     return SSL_connect(ssl_) == 1;
 }
+
 void WiFiClientSecure::stop() {
     if (ssl_) {
         SSL_free(ssl_);
@@ -79,6 +105,7 @@ void WiFiClientSecure::stop() {
     context_ = nullptr;
     socket_ = -1;
 }
+
 bool WiFiClientSecure::connected() {
     receive();
     if (transportScenario == "stalled-body" || transportScenario == "negative-read" ||
@@ -87,6 +114,7 @@ bool WiFiClientSecure::connected() {
     }
     return position_ < incoming_.size();
 }
+
 int WiFiClientSecure::available() {
     receive();
     if (transportScenario == "continuous-body" && position_ >= incoming_.size()) {
@@ -94,23 +122,41 @@ int WiFiClientSecure::available() {
     }
     return position_ < incoming_.size() ? int(incoming_.size() - position_) : -1;
 }
+
 int WiFiClientSecure::read() {
+    if ((transportScenario == "late-header" && position_ == incoming_.find("\r\n\r\n") + 3) ||
+        ((transportScenario == "late-body-final" ||
+          (transportScenario == "late-primary" && tlsAttempts.size() == 1)) &&
+         position_ + 1 == incoming_.size())) {
+        nativeMillisTicks() += 10000;
+    }
+    if (transportScenario == "late-body-idle" && position_ == incoming_.find("\r\n\r\n") + 4) {
+        nativeMillisTicks() += 1001;
+    }
     if (transportScenario == "continuous-body" && position_ >= incoming_.size()) {
         return 'x';
     }
-    if (transportScenario == "negative-read" &&
-        position_ >= incoming_.find("\r\n\r\n") + 4) {
+    if (transportScenario == "negative-read" && position_ >= incoming_.find("\r\n\r\n") + 4) {
         return -1;
     }
     return position_ < incoming_.size() ? static_cast<unsigned char>(incoming_[position_++]) : -1;
 }
+
 void WiFiClientSecure::print(const char* value) {
+    transportPhase = "write";
+    yield();
+    transportPhase = "idle";
+    if (transportScenario == "write-delay") {
+        nativeMillisTicks() += 10000;
+    }
     outgoing_ += value;
 }
+
 void WiFiClientSecure::println(const char* value) {
     print(value);
     println();
 }
+
 void WiFiClientSecure::println() {
     outgoing_ += "\r\n";
 }
